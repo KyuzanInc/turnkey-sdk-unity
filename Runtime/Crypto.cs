@@ -754,6 +754,109 @@ namespace Turnkey
             }
         }
 
+        /// <summary>
+        /// Verifies the signature of a Turnkey session JWT.
+        /// Equivalent to verifySessionJwtSignature() in @turnkey/crypto.
+        /// </summary>
+        /// <param name="jwt">The JWT token to verify</param>
+        /// <returns>True if the signature is valid, false otherwise</returns>
+        public static bool VerifySessionJwtSignature(string jwt)
+        {
+            try
+            {
+                // 1. Split JWT into parts
+                var parts = jwt.Split('.');
+                if (parts.Length != 3)
+                {
+                    throw new Exception("Invalid JWT: need 3 parts");
+                }
+
+                var headerB64 = parts[0];
+                var payloadB64 = parts[1];
+                var signatureB64 = parts[2];
+                var signingInput = $"{headerB64}.{payloadB64}";
+
+                // 2. Calculate sha256(sha256(header.payload)) - double SHA256
+                byte[] msgDigest;
+                using (var sha256 = SHA256.Create())
+                {
+                    var h1 = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(signingInput));
+                    msgDigest = sha256.ComputeHash(h1);
+                }
+
+                // 3. Base64URL decode the signature
+                var signature = Base64UrlDecode(signatureB64);
+                if (signature.Length != 64)
+                {
+                    throw new Exception($"Invalid signature length: expected 64 bytes, got {signature.Length}");
+                }
+
+                // 4. Load the notarizer public key
+                var publicKey = Encoding.Uint8ArrayFromHexString(Constants.PRODUCTION_NOTARIZER_SIGN_PUBLIC_KEY);
+
+                // 5. Verify using P256
+                return VerifyP256Signature(publicKey, signature, msgDigest);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"JWT signature verification failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Decodes a base64url encoded string.
+        /// </summary>
+        private static byte[] Base64UrlDecode(string input)
+        {
+            // Replace URL-safe characters
+            var output = input.Replace('-', '+').Replace('_', '/');
+            // Add padding
+            switch (output.Length % 4)
+            {
+                case 2: output += "=="; break;
+                case 3: output += "="; break;
+            }
+            return Convert.FromBase64String(output);
+        }
+
+        /// <summary>
+        /// Verifies a P256 signature with raw r||s format (64 bytes).
+        /// </summary>
+        private static bool VerifyP256Signature(byte[] publicKeyBytes, byte[] signatureRaw, byte[] messageDigest)
+        {
+            try
+            {
+                // Get the curve
+                var curve = ECNamedCurveTable.GetByName(Constants.CURVE_NAME);
+                var domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
+
+                // Decode public key
+                var point = curve.Curve.DecodePoint(publicKeyBytes);
+                var publicKeyParams = new ECPublicKeyParameters(point, domainParams);
+
+                // Convert raw signature (r || s, 64 bytes) to DER format for BouncyCastle
+                var r = new BigInteger(1, signatureRaw, 0, 32);
+                var s = new BigInteger(1, signatureRaw, 32, 32);
+                var derSignature = new DerSequence(
+                    new DerInteger(r),
+                    new DerInteger(s)
+                ).GetDerEncoded();
+
+                // Use NONEwithECDSA since we already have the message digest
+                var signer = SignerUtilities.GetSigner("NONEwithECDSA");
+                signer.Init(false, publicKeyParams);
+                signer.BlockUpdate(messageDigest, 0, messageDigest.Length);
+
+                return signer.VerifySignature(derSignature);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"P256 signature verification error: {ex.Message}");
+                return false;
+            }
+        }
+
         // Helper methods for bundle operations
         private static void VerifyEnclaveSignature(string enclaveQuorumPublic, string signatureHex, string signedDataHex)
         {
