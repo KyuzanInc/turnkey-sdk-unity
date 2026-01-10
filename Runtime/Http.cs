@@ -120,6 +120,16 @@ namespace Turnkey
             return CreateSignedRequest($"{BaseUrl}/public/v1/submit/export_private_key", body);
         }
 
+        public SignedRequest StampExportWalletAccount(ExportWalletAccountRequestBody body)
+        {
+            if (body == null)
+            {
+                throw new ArgumentNullException(nameof(body));
+            }
+
+            return CreateSignedRequest($"{BaseUrl}/public/v1/submit/export_wallet_account", body);
+        }
+
         private SignedRequest CreateSignedRequest<TBody>(string url, TBody body)
         {
             var bodyJson = JsonUtility.ToJson(body);
@@ -213,6 +223,22 @@ namespace Turnkey
         public class ExportPrivateKeyParameters
         {
             public string privateKeyId;
+            public string targetPublicKey;
+        }
+
+        [Serializable]
+        public class ExportWalletAccountRequestBody
+        {
+            public string organizationId;
+            public string type;
+            public string timestampMs;
+            public ExportWalletAccountParameters parameters;
+        }
+
+        [Serializable]
+        public class ExportWalletAccountParameters
+        {
+            public string address;
             public string targetPublicKey;
         }
 
