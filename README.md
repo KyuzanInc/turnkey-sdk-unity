@@ -9,7 +9,7 @@ Unofficial Unity implementation of Turnkey SDK for cryptographic operations and 
 | @turnkey/crypto | 2.8.9 | `crypto.ts` | `Crypto.cs` | Main cryptographic operations (HPKE, key generation, bundle encryption/decryption) |
 | @turnkey/crypto | 2.8.9 | `math.ts` | `CryptoMath.cs` | Mathematical utilities (modular square root, BigInteger conversions) |
 | @turnkey/crypto | 2.8.9 | `constants.ts` | `CryptoConstants.cs` | HPKE suite IDs, signer public keys |
-| @turnkey/crypto | 2.8.9 | (in crypto.ts) | `Hkdf.cs` | HKDF implementation (uses @noble/hashes/hkdf in Node.js) |
+| @turnkey/crypto | 2.8.9 | (in crypto.ts) | `CryptoHkdf.cs` | HKDF implementation (uses @noble/hashes/hkdf in Node.js) |
 | @turnkey/http | 3.16.1 | `index.ts` | `Http.cs` | HTTP client with Turnkey stamping |
 | @turnkey/api-key-stamper | 0.6.0 | `index.ts` | `ApiKeyStamper.cs` | ECDSA signature generation for API authentication |
 | @turnkey/encoding | 0.6.0 | `index.ts` | `Encoding.cs` | Hex/Base58/UTF-8 encoding and decoding |
@@ -24,7 +24,7 @@ Level 0 (no internal dependencies):
   - CryptoMath.cs
   - EncodingConstants.cs
   - UnityConstants.cs
-  - Hkdf.cs
+  - CryptoHkdf.cs
 
 Level 1:
   - Encoding.cs → EncodingConstants

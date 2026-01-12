@@ -7,7 +7,7 @@ namespace Turnkey
     /// HMAC-based Key Derivation Function (HKDF) implementation
     /// Based on RFC 5869: https://tools.ietf.org/html/rfc5869
     /// </summary>
-    public static class Hkdf
+    public static class CryptoHkdf
     {
         private const int HashLen = 32; // SHA-256 output length
 

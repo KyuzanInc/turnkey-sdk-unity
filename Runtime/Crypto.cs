@@ -416,8 +416,8 @@ namespace Turnkey
         private static byte[] ExtractAndExpand(byte[] sharedSecret, byte[] ikm, byte[] info, int len)
         {
             // Use the Hkdf class for extract and expand
-            var prk = Hkdf.Extract(sharedSecret, ikm);
-            var resp = Hkdf.Expand(prk, info, len);
+            var prk = CryptoHkdf.Extract(sharedSecret, ikm);
+            var resp = CryptoHkdf.Expand(prk, info, len);
             return resp;
         }
 
