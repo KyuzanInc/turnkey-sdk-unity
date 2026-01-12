@@ -24,6 +24,176 @@ namespace Turnkey
     /// </summary>
     public static class Crypto
     {
+        #region Nested Classes
+
+        /// <summary>
+        /// Constants used by the Turnkey crypto library.
+        /// Ported from @turnkey/crypto v2.8.9 constants.ts.
+        /// </summary>
+        public static class Constants
+        {
+            // HPKE Suite constants
+            public static readonly byte[] SUITE_ID_1 = new byte[] { 75, 69, 77, 0, 16 }; // KEM suite ID
+            public static readonly byte[] SUITE_ID_2 = new byte[] { 72, 80, 75, 69, 0, 16, 0, 1, 0, 2 }; // HPKE suite ID
+            public static readonly byte[] HPKE_VERSION = new byte[] { 72, 80, 75, 69, 45, 118, 49 }; // HPKE-v1
+
+            // HPKE Labels
+            public static readonly byte[] LABEL_SECRET = new byte[] { 115, 101, 99, 114, 101, 116 }; // secret
+            public static readonly byte[] LABEL_EAE_PRK = new byte[] { 101, 97, 101, 95, 112, 114, 107 }; // eae_prk
+            public static readonly byte[] LABEL_SHARED_SECRET = new byte[] { 115, 104, 97, 114, 101, 100, 95, 115, 101, 99, 114, 101, 116 }; // shared_secret
+
+            // AES_KEY_INFO and IV_INFO constants
+            public static readonly byte[] AES_KEY_INFO = new byte[] {
+                0, 32, 72, 80, 75, 69, 45, 118, 49, 72, 80, 75, 69, 0, 16, 0, 1, 0, 2, 107,
+                101, 121, 0, 143, 195, 174, 184, 50, 73, 10, 75, 90, 179, 228, 32, 35, 40,
+                125, 178, 154, 31, 75, 199, 194, 34, 192, 223, 34, 135, 39, 183, 10, 64, 33,
+                18, 47, 63, 4, 233, 32, 108, 209, 36, 19, 80, 53, 41, 180, 122, 198, 166, 48,
+                185, 46, 196, 207, 125, 35, 69, 8, 208, 175, 151, 113, 201, 158, 80
+            };
+
+            public static readonly byte[] IV_INFO = new byte[] {
+                0, 12, 72, 80, 75, 69, 45, 118, 49, 72, 80, 75, 69, 0, 16, 0, 1, 0, 2, 98, 97,
+                115, 101, 95, 110, 111, 110, 99, 101, 0, 143, 195, 174, 184, 50, 73, 10, 75,
+                90, 179, 228, 32, 35, 40, 125, 178, 154, 31, 75, 199, 194, 34, 192, 223, 34,
+                135, 39, 183, 10, 64, 33, 18, 47, 63, 4, 233, 32, 108, 209, 36, 19, 80, 53,
+                41, 180, 122, 198, 166, 48, 185, 46, 196, 207, 125, 35, 69, 8, 208, 175, 151,
+                113, 201, 158, 80
+            };
+
+            // Key size constants
+            public const int UNCOMPRESSED_PUB_KEY_LENGTH_BYTES = 65;
+
+            // Production signer public key for bundle signature verification
+            public const string PRODUCTION_SIGNER_SIGN_PUBLIC_KEY = "04cf288fe433cc4e1aa0ce1632feac4ea26bf2f5a09dcfe5a42c398e06898710330f0572882f4dbdf0f5304b8fc8703acd69adca9a4bbf7f5d00d20a5e364b2569";
+
+            // Notarizer public key for session JWT verification
+            public const string PRODUCTION_NOTARIZER_SIGN_PUBLIC_KEY = "04d498aa87ac3bf982ac2b5dd9604d0074905cfbda5d62727c5a237b895e6749205e9f7cd566909c4387f6ca25c308445c60884b788560b785f4a96ac33702a469";
+        }
+
+        /// <summary>
+        /// Mathematical operations for Turnkey crypto.
+        /// Ported from @turnkey/crypto v2.8.9 math.ts.
+        /// </summary>
+        public static class Math
+        {
+            /// <summary>
+            /// Compute modular square root using Tonelli-Shanks algorithm.
+            /// </summary>
+            /// <param name="x">The value to compute square root of</param>
+            /// <param name="p">The prime modulus</param>
+            /// <returns>The modular square root</returns>
+            /// <exception cref="ArgumentException">If p is not positive</exception>
+            /// <exception cref="InvalidOperationException">If no modular square root exists or unsupported modulus</exception>
+            public static BigInteger ModSqrt(BigInteger x, BigInteger p)
+            {
+                if (p.CompareTo(BigInteger.Zero) <= 0)
+                {
+                    throw new ArgumentException("p must be positive");
+                }
+
+                var baseVal = x.Mod(p);
+
+                // Check if p % 4 == 3 (applies to NIST curves P-256, P-384, and P-521)
+                // This is true when both bit 0 and bit 1 are set
+                if (p.TestBit(0) && p.TestBit(1))
+                {
+                    // q = (p + 1) / 4
+                    var q = p.Add(BigInteger.One).ShiftRight(2);
+                    var squareRoot = baseVal.ModPow(q, p);
+
+                    // Verify the result
+                    if (!squareRoot.Multiply(squareRoot).Mod(p).Equals(baseVal))
+                    {
+                        throw new InvalidOperationException("could not find a modular square root");
+                    }
+
+                    return squareRoot;
+                }
+
+                // Other elliptic curve types not supported
+                throw new InvalidOperationException("unsupported modulus value");
+            }
+        }
+
+        /// <summary>
+        /// HMAC-based Key Derivation Function (HKDF) implementation.
+        /// Equivalent to @noble/hashes/hkdf used by @turnkey/crypto v2.8.9.
+        /// Based on RFC 5869: https://tools.ietf.org/html/rfc5869
+        /// </summary>
+        public static class Hkdf
+        {
+            private const int HashLen = 32; // SHA-256 output length
+
+            /// <summary>
+            /// HKDF Extract step - Extract a pseudorandom key from input keying material
+            /// </summary>
+            /// <param name="salt">Optional salt value (if not provided, a string of HashLen zeros is used)</param>
+            /// <param name="ikm">Input keying material</param>
+            /// <returns>Pseudorandom key (PRK)</returns>
+            public static byte[] Extract(byte[] salt, byte[] ikm)
+            {
+                if (salt == null || salt.Length == 0)
+                {
+                    salt = new byte[HashLen]; // Use HashLen zeros
+                }
+
+                using (var hmac = new System.Security.Cryptography.HMACSHA256(salt))
+                {
+                    return hmac.ComputeHash(ikm);
+                }
+            }
+
+            /// <summary>
+            /// HKDF Expand step - Expand the pseudorandom key to the desired length
+            /// </summary>
+            /// <param name="prk">Pseudorandom key from Extract step</param>
+            /// <param name="info">Optional context and application specific information</param>
+            /// <param name="length">Length of output keying material in bytes</param>
+            /// <returns>Output keying material (OKM)</returns>
+            public static byte[] Expand(byte[] prk, byte[] info, int length)
+            {
+                if (prk == null || prk.Length < HashLen)
+                {
+                    throw new ArgumentException("PRK must be at least HashLen bytes");
+                }
+
+                if (length > 255 * HashLen)
+                {
+                    throw new ArgumentException($"Output length cannot exceed 255 * HashLen ({255 * HashLen} bytes)");
+                }
+
+                if (info == null)
+                {
+                    info = new byte[0];
+                }
+
+                var n = (int)System.Math.Ceiling((double)length / HashLen);
+                var okm = new byte[n * HashLen];
+                var tPrev = new byte[0];
+
+                using (var hmac = new System.Security.Cryptography.HMACSHA256(prk))
+                {
+                    for (int i = 1; i <= n; i++)
+                    {
+                        var input = new byte[tPrev.Length + info.Length + 1];
+                        Array.Copy(tPrev, 0, input, 0, tPrev.Length);
+                        Array.Copy(info, 0, input, tPrev.Length, info.Length);
+                        input[input.Length - 1] = (byte)i;
+
+                        var t = hmac.ComputeHash(input);
+                        Array.Copy(t, 0, okm, (i - 1) * HashLen, HashLen);
+                        tPrev = t;
+                    }
+                }
+
+                // Return only the requested length
+                var result = new byte[length];
+                Array.Copy(okm, 0, result, 0, length);
+                return result;
+            }
+        }
+
+        #endregion
         /// <summary>
         /// HPKE Decrypt parameters
         /// </summary>
@@ -138,17 +308,17 @@ namespace Turnkey
             var kemContext = GetKemContext(encappedKeyBuf, Encoding.Uint8ArrayToHexString(receiverPubBuf));
 
             // Step 3: Build the HKDF inputs for key derivation
-            var ikm = BuildLabeledIkm(CryptoConstants.LABEL_EAE_PRK, ss, CryptoConstants.SUITE_ID_1);
-            var info = BuildLabeledInfo(CryptoConstants.LABEL_SHARED_SECRET, kemContext, CryptoConstants.SUITE_ID_1, 32);
+            var ikm = BuildLabeledIkm(Constants.LABEL_EAE_PRK, ss, Constants.SUITE_ID_1);
+            var info = BuildLabeledInfo(Constants.LABEL_SHARED_SECRET, kemContext, Constants.SUITE_ID_1, 32);
             var sharedSecret = ExtractAndExpand(new byte[0], ikm, info, 32);
 
             // Step 4: Derive the AES key
-            ikm = BuildLabeledIkm(CryptoConstants.LABEL_SECRET, new byte[0], CryptoConstants.SUITE_ID_2);
-            info = CryptoConstants.AES_KEY_INFO;
+            ikm = BuildLabeledIkm(Constants.LABEL_SECRET, new byte[0], Constants.SUITE_ID_2);
+            info = Constants.AES_KEY_INFO;
             var key = ExtractAndExpand(sharedSecret, ikm, info, 32);
 
             // Step 5: Derive the initialization vector
-            info = CryptoConstants.IV_INFO;
+            info = Constants.IV_INFO;
             var iv = ExtractAndExpand(sharedSecret, ikm, info, 12);
 
             // Step 6: Decrypt the data using AES-GCM
@@ -183,16 +353,16 @@ namespace Turnkey
             var kemContext = GetKemContext(senderPubBuf, Encoding.Uint8ArrayToHexString(targetKeyBuf));
 
             // HKDF derive shared secret
-            var ikm = BuildLabeledIkm(CryptoConstants.LABEL_EAE_PRK, ss, CryptoConstants.SUITE_ID_1);
-            var info = BuildLabeledInfo(CryptoConstants.LABEL_SHARED_SECRET, kemContext, CryptoConstants.SUITE_ID_1, 32);
+            var ikm = BuildLabeledIkm(Constants.LABEL_EAE_PRK, ss, Constants.SUITE_ID_1);
+            var info = BuildLabeledInfo(Constants.LABEL_SHARED_SECRET, kemContext, Constants.SUITE_ID_1, 32);
             var sharedSecret = ExtractAndExpand(Array.Empty<byte>(), ikm, info, 32);
 
             // Derive AES key and IV
-            ikm = BuildLabeledIkm(CryptoConstants.LABEL_SECRET, Array.Empty<byte>(), CryptoConstants.SUITE_ID_2);
-            info = CryptoConstants.AES_KEY_INFO;
+            ikm = BuildLabeledIkm(Constants.LABEL_SECRET, Array.Empty<byte>(), Constants.SUITE_ID_2);
+            info = Constants.AES_KEY_INFO;
             var key = ExtractAndExpand(sharedSecret, ikm, info, 32);
 
-            info = CryptoConstants.IV_INFO;
+            info = Constants.IV_INFO;
             var iv = ExtractAndExpand(sharedSecret, ikm, info, 12);
 
             // Encrypt using AES-GCM
@@ -216,7 +386,7 @@ namespace Turnkey
         /// </summary>
         public static byte[] CompressRawPublicKey(byte[] rawPublicKey)
         {
-            if (rawPublicKey.Length != CryptoConstants.UNCOMPRESSED_PUB_KEY_LENGTH_BYTES || rawPublicKey[0] != 0x04)
+            if (rawPublicKey.Length != Constants.UNCOMPRESSED_PUB_KEY_LENGTH_BYTES || rawPublicKey[0] != 0x04)
             {
                 throw new ArgumentException("Invalid uncompressed public key");
             }
@@ -275,7 +445,7 @@ namespace Turnkey
             var rhs = x2PlusA.Multiply(x).Add(b).Mod(p);
 
             // Compute y = sqrt(rhs) mod p
-            var y = CryptoMath.ModSqrt(rhs, p);
+            var y = Math.ModSqrt(rhs, p);
 
             // Adjust y based on the LSB (least significant bit)
             if (lsb != y.TestBit(0))
@@ -355,7 +525,7 @@ namespace Turnkey
         private static byte[] BuildLabeledIkm(byte[] label, byte[] ikm, byte[] suiteId)
         {
             return Encoding.ConcatUint8Arrays(
-                CryptoConstants.HPKE_VERSION,
+                Constants.HPKE_VERSION,
                 suiteId,
                 label,
                 ikm
@@ -372,7 +542,7 @@ namespace Turnkey
             ret[1] = (byte)len;
 
             // Copy HPKE_VERSION starting at index 2
-            Array.Copy(CryptoConstants.HPKE_VERSION, 0, ret, 2, CryptoConstants.HPKE_VERSION.Length);
+            Array.Copy(Constants.HPKE_VERSION, 0, ret, 2, Constants.HPKE_VERSION.Length);
 
             // Copy suite ID
             Array.Copy(suiteId, 0, ret, suiteIdStartIndex, suiteId.Length);
@@ -389,8 +559,8 @@ namespace Turnkey
         private static byte[] ExtractAndExpand(byte[] sharedSecret, byte[] ikm, byte[] info, int len)
         {
             // Use the Hkdf class for extract and expand
-            var prk = CryptoHkdf.Extract(sharedSecret, ikm);
-            var resp = CryptoHkdf.Expand(prk, info, len);
+            var prk = Hkdf.Extract(sharedSecret, ikm);
+            var resp = Hkdf.Expand(prk, info, len);
             return resp;
         }
 
@@ -597,7 +767,7 @@ namespace Turnkey
 
                 if (!string.IsNullOrEmpty(signature) && !string.IsNullOrEmpty(signedData))
                 {
-                    if (!VerifySignature(CryptoConstants.PRODUCTION_SIGNER_SIGN_PUBLIC_KEY, signature, signedData))
+                    if (!VerifySignature(Constants.PRODUCTION_SIGNER_SIGN_PUBLIC_KEY, signature, signedData))
                     {
                         throw new Exception("Invalid signature on export bundle");
                     }
@@ -707,7 +877,7 @@ namespace Turnkey
                 }
 
                 // 4. Load the notarizer public key
-                var publicKey = Encoding.Uint8ArrayFromHexString(CryptoConstants.PRODUCTION_NOTARIZER_SIGN_PUBLIC_KEY);
+                var publicKey = Encoding.Uint8ArrayFromHexString(Constants.PRODUCTION_NOTARIZER_SIGN_PUBLIC_KEY);
 
                 // 5. Verify using P256
                 return VerifyP256Signature(publicKey, signature, msgDigest);
@@ -773,12 +943,12 @@ namespace Turnkey
         // Helper methods for bundle operations
         private static void VerifyEnclaveSignature(string enclaveQuorumPublic, string signatureHex, string signedDataHex)
         {
-            if (!string.Equals(enclaveQuorumPublic, CryptoConstants.PRODUCTION_SIGNER_SIGN_PUBLIC_KEY, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(enclaveQuorumPublic, Constants.PRODUCTION_SIGNER_SIGN_PUBLIC_KEY, StringComparison.OrdinalIgnoreCase))
             {
-                throw new Exception($"Signer key {enclaveQuorumPublic} is not recognized. Expected: {CryptoConstants.PRODUCTION_SIGNER_SIGN_PUBLIC_KEY}");
+                throw new Exception($"Signer key {enclaveQuorumPublic} is not recognized. Expected: {Constants.PRODUCTION_SIGNER_SIGN_PUBLIC_KEY}");
             }
 
-            var publicKeyBytes = Encoding.Uint8ArrayFromHexString(CryptoConstants.PRODUCTION_SIGNER_SIGN_PUBLIC_KEY);
+            var publicKeyBytes = Encoding.Uint8ArrayFromHexString(Constants.PRODUCTION_SIGNER_SIGN_PUBLIC_KEY);
             var signatureBytes = Encoding.Uint8ArrayFromHexString(signatureHex);
             var messageBytes = Encoding.Uint8ArrayFromHexString(signedDataHex);
 

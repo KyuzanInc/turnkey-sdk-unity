@@ -12,6 +12,23 @@ namespace Turnkey
     /// </summary>
     public static class Encoding
     {
+        #region Nested Classes
+
+        /// <summary>
+        /// Constants used by the Turnkey encoding library.
+        /// Ported from @turnkey/encoding internal constants.
+        /// </summary>
+        public static class Constants
+        {
+            /// <summary>
+            /// Base58 alphabet used for encoding/decoding.
+            /// Same as Bitcoin's Base58 alphabet.
+            /// </summary>
+            public const string BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+        }
+
+        #endregion
+
         private static readonly Regex HexRegex = new Regex("^[0-9A-Fa-f]+$");
 
         /// <summary>
@@ -71,7 +88,7 @@ namespace Turnkey
             {
                 var remainder = intData.Mod(new BigInteger("58"));
                 intData = intData.Divide(new BigInteger("58"));
-                result.Insert(0, EncodingConstants.BASE58_ALPHABET[remainder.IntValue]);
+                result.Insert(0, Constants.BASE58_ALPHABET[remainder.IntValue]);
             }
 
             // Add leading zeros
@@ -98,7 +115,7 @@ namespace Turnkey
 
             for (int i = encoded.Length - 1; i >= 0; i--)
             {
-                int digit = EncodingConstants.BASE58_ALPHABET.IndexOf(encoded[i]);
+                int digit = Constants.BASE58_ALPHABET.IndexOf(encoded[i]);
                 if (digit < 0)
                 {
                     throw new ArgumentException($"Invalid character '{encoded[i]}' in base58 string");
