@@ -7,7 +7,7 @@ Unofficial Unity implementation of Turnkey SDK for cryptographic operations and 
 | Node.js Package | Version | Node.js Source | Unity File | Description |
 |-----------------|---------|----------------|------------|-------------|
 | @turnkey/crypto | 2.8.9 | `crypto.ts` | `Crypto.cs` | Main cryptographic operations (HPKE, key generation, bundle encryption/decryption) |
-| @turnkey/crypto | 2.8.9 | `math.ts` | `CryptoMath.cs` | Mathematical utilities (modular square root, BigInteger conversions) |
+| @turnkey/crypto | 2.8.9 | `math.ts` | `CryptoMath.cs` | Mathematical utilities (modular square root) |
 | @turnkey/crypto | 2.8.9 | `constants.ts` | `CryptoConstants.cs` | HPKE suite IDs, signer public keys |
 | @turnkey/crypto | 2.8.9 | (in crypto.ts) | `CryptoHkdf.cs` | HKDF implementation (uses @noble/hashes/hkdf in Node.js) |
 | @turnkey/http | 3.16.1 | `index.ts` | `Http.cs` | HTTP client with Turnkey stamping |

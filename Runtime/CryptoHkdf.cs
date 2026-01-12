@@ -4,7 +4,8 @@ using System.Security.Cryptography;
 namespace Turnkey
 {
     /// <summary>
-    /// HMAC-based Key Derivation Function (HKDF) implementation
+    /// HMAC-based Key Derivation Function (HKDF) implementation.
+    /// Equivalent to @noble/hashes/hkdf used by @turnkey/crypto v2.8.9.
     /// Based on RFC 5869: https://tools.ietf.org/html/rfc5869
     /// </summary>
     public static class CryptoHkdf
@@ -77,20 +78,6 @@ namespace Turnkey
             var result = new byte[length];
             Array.Copy(okm, 0, result, 0, length);
             return result;
-        }
-
-        /// <summary>
-        /// Convenience method that performs both Extract and Expand steps
-        /// </summary>
-        /// <param name="salt">Optional salt value</param>
-        /// <param name="ikm">Input keying material</param>
-        /// <param name="info">Optional context information</param>
-        /// <param name="length">Length of output keying material</param>
-        /// <returns>Output keying material (OKM)</returns>
-        public static byte[] DeriveKey(byte[] salt, byte[] ikm, byte[] info, int length)
-        {
-            var prk = Extract(salt, ikm);
-            return Expand(prk, info, length);
         }
     }
 }
