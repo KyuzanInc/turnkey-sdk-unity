@@ -5,12 +5,14 @@ namespace Turnkey
 {
     /// <summary>
     /// Creates signed Turnkey requests using API key stamping.
-    /// Equivalent to @turnkey/http in the Node.js SDK
+    /// Ported from @turnkey/http v3.16.1.
+    /// Note: This is a simplified implementation for Unity that provides
+    /// request signing functionality. Full API client features (error handling,
+    /// polling, WebAuthn) are not implemented.
     /// </summary>
     public class Http
     {
         private const string BaseUrl = "https://api.turnkey.com";
-        private const string StampHeaderName = "X-Stamp";
 
         private readonly ApiKeyStamper stamper;
 
@@ -34,24 +36,14 @@ namespace Turnkey
                 throw new ArgumentException("Target private key is required", nameof(targetPrivateKey));
             }
 
-            try
-            {
-                var apiPrivateKey = Crypto.DecryptCredentialBundle(encryptedCredentialBundle, targetPrivateKey);
-                var apiPrivateKeyBytes = Encoding.Uint8ArrayFromHexString(apiPrivateKey);
-                var apiPublicKeyBytes = Crypto.GetPublicKey(apiPrivateKeyBytes, true);
+            var apiPrivateKey = Crypto.DecryptCredentialBundle(encryptedCredentialBundle, targetPrivateKey);
+            var apiPrivateKeyBytes = Encoding.Uint8ArrayFromHexString(apiPrivateKey);
+            var apiPublicKeyBytes = Crypto.GetPublicKey(apiPrivateKeyBytes, true);
 
-                var normalizedPrivateKey = Encoding.Uint8ArrayToHexString(apiPrivateKeyBytes);
-                var apiPublicKey = Encoding.Uint8ArrayToHexString(apiPublicKeyBytes);
+            var normalizedPrivateKey = Encoding.Uint8ArrayToHexString(apiPrivateKeyBytes);
+            var apiPublicKey = Encoding.Uint8ArrayToHexString(apiPublicKeyBytes);
 
-                Debug.Log($"[Http] Initialized from credential bundle. Public key: {apiPublicKey}");
-
-                return new Http(new ApiKeyStamper(apiPublicKey, normalizedPrivateKey));
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[Http] Failed to create client: {e.Message}");
-                throw;
-            }
+            return new Http(new ApiKeyStamper(apiPublicKey, normalizedPrivateKey));
         }
 
         /// <summary>
@@ -73,8 +65,6 @@ namespace Turnkey
             var normalizedPrivateKey = Encoding.Uint8ArrayToHexString(privateKeyBytes);
             var publicKeyBytes = Crypto.GetPublicKey(privateKeyBytes, true);
             var publicKeyHex = Encoding.Uint8ArrayToHexString(publicKeyBytes);
-
-            Debug.Log($"[Http] Derived API key. Public key: {publicKeyHex}");
 
             return new Http(new ApiKeyStamper(publicKeyHex, normalizedPrivateKey));
         }
@@ -133,7 +123,7 @@ namespace Turnkey
         private SignedRequest CreateSignedRequest<TBody>(string url, TBody body)
         {
             var bodyJson = JsonUtility.ToJson(body);
-            var stampValue = stamper.Stamp(bodyJson);
+            var stampResult = stamper.Stamp(bodyJson);
 
             return new SignedRequest
             {
@@ -141,8 +131,8 @@ namespace Turnkey
                 body = bodyJson,
                 stamp = new Stamp
                 {
-                    stampHeaderName = StampHeaderName,
-                    stampHeaderValue = stampValue
+                    stampHeaderName = stampResult.stampHeaderName,
+                    stampHeaderValue = stampResult.stampHeaderValue
                 }
             };
         }

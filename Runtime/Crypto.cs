@@ -13,12 +13,14 @@ using Org.BouncyCastle.Security;
 using Org.BouncyCastle.Asn1;
 using Org.BouncyCastle.Asn1.X9;
 using Org.BouncyCastle.Crypto.EC;
-using UnityEngine;
 
 namespace Turnkey
 {
     /// <summary>
-    /// Core cryptographic operations for Turnkey, aligned with @turnkey/crypto
+    /// Core cryptographic operations for Turnkey.
+    /// Ported from @turnkey/crypto v2.8.9.
+    /// Note: hpkeAuthEncrypt, quorumKeyEncrypt, fromDerSignature, toDerSignature,
+    /// and extractPrivateKeyFromPKCS8Bytes are not implemented.
     /// </summary>
     public static class Crypto
     {
@@ -114,125 +116,91 @@ namespace Turnkey
         }
 
         /// <summary>
-        /// HPKE decryption implementation matching Turnkey v2.3.1
+        /// HPKE decryption implementation matching @turnkey/crypto v2.8.9
         /// </summary>
         public static byte[] HpkeDecrypt(HpkeDecryptParams parameters)
         {
-            try
-            {
-                var ciphertextBuf = parameters.CiphertextBuf;
-                var encappedKeyBuf = parameters.EncappedKeyBuf;
-                var receiverPriv = parameters.ReceiverPriv;
+            var ciphertextBuf = parameters.CiphertextBuf;
+            var encappedKeyBuf = parameters.EncappedKeyBuf;
+            var receiverPriv = parameters.ReceiverPriv;
 
-                Debug.Log($"HPKE Decrypt - Ciphertext length: {ciphertextBuf.Length}");
-                Debug.Log($"HPKE Decrypt - Encapped key length: {encappedKeyBuf.Length}");
-                Debug.Log($"HPKE Decrypt - Receiver private key: {receiverPriv.Substring(0, System.Math.Min(8, receiverPriv.Length))}...");
+            // Get receiver public key (uncompressed)
+            var receiverPrivBytes = Encoding.Uint8ArrayFromHexString(receiverPriv);
+            var receiverPubBuf = GetPublicKey(receiverPrivBytes, false);
 
-                // Get receiver public key (uncompressed)
-                var receiverPrivBytes = Encoding.Uint8ArrayFromHexString(receiverPriv);
-                var receiverPubBuf = GetPublicKey(receiverPrivBytes, false);
-                Debug.Log($"HPKE Decrypt - Derived receiver public key: {Encoding.Uint8ArrayToHexString(receiverPubBuf)}");
+            // Build AAD
+            var aad = BuildAdditionalAssociatedData(encappedKeyBuf, receiverPubBuf);
 
-                // Build AAD
-                var aad = BuildAdditionalAssociatedData(encappedKeyBuf, receiverPubBuf);
-                Debug.Log($"HPKE Decrypt - AAD length: {aad.Length}");
+            // Step 1: Generate Shared Secret
+            var ss = DeriveSS(encappedKeyBuf, receiverPriv);
 
-                // Step 1: Generate Shared Secret
-                Debug.Log("HPKE Decrypt - Deriving shared secret...");
-                var ss = DeriveSS(encappedKeyBuf, receiverPriv);
-                Debug.Log($"HPKE Decrypt - Shared secret length: {ss.Length}");
+            // Step 2: Generate the KEM context
+            var kemContext = GetKemContext(encappedKeyBuf, Encoding.Uint8ArrayToHexString(receiverPubBuf));
 
-                // Step 2: Generate the KEM context
-                var kemContext = GetKemContext(encappedKeyBuf, Encoding.Uint8ArrayToHexString(receiverPubBuf));
-                Debug.Log($"HPKE Decrypt - KEM context length: {kemContext.Length}");
+            // Step 3: Build the HKDF inputs for key derivation
+            var ikm = BuildLabeledIkm(CryptoConstants.LABEL_EAE_PRK, ss, CryptoConstants.SUITE_ID_1);
+            var info = BuildLabeledInfo(CryptoConstants.LABEL_SHARED_SECRET, kemContext, CryptoConstants.SUITE_ID_1, 32);
+            var sharedSecret = ExtractAndExpand(new byte[0], ikm, info, 32);
 
-                // Step 3: Build the HKDF inputs for key derivation
-                var ikm = BuildLabeledIkm(CryptoConstants.LABEL_EAE_PRK, ss, CryptoConstants.SUITE_ID_1);
-                var info = BuildLabeledInfo(CryptoConstants.LABEL_SHARED_SECRET, kemContext, CryptoConstants.SUITE_ID_1, 32);
-                var sharedSecret = ExtractAndExpand(new byte[0], ikm, info, 32);
-                Debug.Log($"HPKE Decrypt - Shared secret after HKDF: {Encoding.Uint8ArrayToHexString(sharedSecret)}");
+            // Step 4: Derive the AES key
+            ikm = BuildLabeledIkm(CryptoConstants.LABEL_SECRET, new byte[0], CryptoConstants.SUITE_ID_2);
+            info = CryptoConstants.AES_KEY_INFO;
+            var key = ExtractAndExpand(sharedSecret, ikm, info, 32);
 
-                // Step 4: Derive the AES key
-                ikm = BuildLabeledIkm(CryptoConstants.LABEL_SECRET, new byte[0], CryptoConstants.SUITE_ID_2);
-                info = CryptoConstants.AES_KEY_INFO;
-                var key = ExtractAndExpand(sharedSecret, ikm, info, 32);
-                Debug.Log($"HPKE Decrypt - Derived AES key: {Encoding.Uint8ArrayToHexString(key)}");
+            // Step 5: Derive the initialization vector
+            info = CryptoConstants.IV_INFO;
+            var iv = ExtractAndExpand(sharedSecret, ikm, info, 12);
 
-                // Step 5: Derive the initialization vector
-                info = CryptoConstants.IV_INFO;
-                var iv = ExtractAndExpand(sharedSecret, ikm, info, 12);
-                Debug.Log($"HPKE Decrypt - Derived IV: {Encoding.Uint8ArrayToHexString(iv)}");
-
-                // Step 6: Decrypt the data using AES-GCM
-                Debug.Log("HPKE Decrypt - Starting AES-GCM decryption...");
-                var decryptedData = AesGcmDecrypt(ciphertextBuf, key, iv, aad);
-                Debug.Log($"HPKE Decrypt - Decryption successful, result length: {decryptedData.Length}");
-
-                return decryptedData;
-            }
-            catch (Exception error)
-            {
-                Debug.LogError($"HPKE Decrypt - Error: {error.Message}");
-                Debug.LogException(error);
-                throw new Exception($"Unable to perform hpkeDecrypt: {error.Message}", error);
-            }
+            // Step 6: Decrypt the data using AES-GCM
+            return AesGcmDecrypt(ciphertextBuf, key, iv, aad);
         }
 
         /// <summary>
-        /// HPKE encryption implementation matching Turnkey SDK v2.6.0
+        /// HPKE encryption implementation matching @turnkey/crypto v2.8.9
         /// </summary>
         public static byte[] HpkeEncrypt(HpkeEncryptParams parameters)
         {
-            try
+            if (parameters == null)
             {
-                if (parameters == null)
-                {
-                    throw new ArgumentNullException(nameof(parameters));
-                }
-
-                var plainTextBuf = parameters.PlainTextBuf ?? Array.Empty<byte>();
-                var targetKeyBuf = parameters.TargetKeyBuf ?? throw new ArgumentNullException(nameof(parameters.TargetKeyBuf));
-
-                // Generate ephemeral key pair
-                var ephemeralKeyPair = GenerateP256KeyPair();
-                var senderPrivBuf = Encoding.Uint8ArrayFromHexString(ephemeralKeyPair.PrivateKey);
-                var senderPubBuf = Encoding.Uint8ArrayFromHexString(ephemeralKeyPair.PublicKeyUncompressed);
-
-                // Build associated data (sender public key + receiver public key)
-                var aad = BuildAdditionalAssociatedData(senderPubBuf, targetKeyBuf);
-
-                // Derive shared secret via ECDH
-                var ss = DeriveSS(targetKeyBuf, Encoding.Uint8ArrayToHexString(senderPrivBuf));
-
-                // Generate the KEM context
-                var kemContext = GetKemContext(senderPubBuf, Encoding.Uint8ArrayToHexString(targetKeyBuf));
-
-                // HKDF derive shared secret
-                var ikm = BuildLabeledIkm(CryptoConstants.LABEL_EAE_PRK, ss, CryptoConstants.SUITE_ID_1);
-                var info = BuildLabeledInfo(CryptoConstants.LABEL_SHARED_SECRET, kemContext, CryptoConstants.SUITE_ID_1, 32);
-                var sharedSecret = ExtractAndExpand(Array.Empty<byte>(), ikm, info, 32);
-
-                // Derive AES key and IV
-                ikm = BuildLabeledIkm(CryptoConstants.LABEL_SECRET, Array.Empty<byte>(), CryptoConstants.SUITE_ID_2);
-                info = CryptoConstants.AES_KEY_INFO;
-                var key = ExtractAndExpand(sharedSecret, ikm, info, 32);
-
-                info = CryptoConstants.IV_INFO;
-                var iv = ExtractAndExpand(sharedSecret, ikm, info, 12);
-
-                // Encrypt using AES-GCM
-                var encryptedData = AesGcmEncrypt(plainTextBuf, key, iv, aad);
-
-                // Concatenate compressed sender public key with ciphertext
-                var compressedSenderBuf = CompressRawPublicKey(senderPubBuf);
-                return Encoding.ConcatUint8Arrays(compressedSenderBuf, encryptedData);
+                throw new ArgumentNullException(nameof(parameters));
             }
-            catch (Exception error)
-            {
-                Debug.LogError($"HPKE Encrypt - Error: {error.Message}");
-                Debug.LogException(error);
-                throw new Exception($"Unable to perform hpkeEncrypt: {error.Message}", error);
-            }
+
+            var plainTextBuf = parameters.PlainTextBuf ?? Array.Empty<byte>();
+            var targetKeyBuf = parameters.TargetKeyBuf ?? throw new ArgumentNullException(nameof(parameters.TargetKeyBuf));
+
+            // Generate ephemeral key pair
+            var ephemeralKeyPair = GenerateP256KeyPair();
+            var senderPrivBuf = Encoding.Uint8ArrayFromHexString(ephemeralKeyPair.PrivateKey);
+            var senderPubBuf = Encoding.Uint8ArrayFromHexString(ephemeralKeyPair.PublicKeyUncompressed);
+
+            // Build associated data (sender public key + receiver public key)
+            var aad = BuildAdditionalAssociatedData(senderPubBuf, targetKeyBuf);
+
+            // Derive shared secret via ECDH
+            var ss = DeriveSS(targetKeyBuf, Encoding.Uint8ArrayToHexString(senderPrivBuf));
+
+            // Generate the KEM context
+            var kemContext = GetKemContext(senderPubBuf, Encoding.Uint8ArrayToHexString(targetKeyBuf));
+
+            // HKDF derive shared secret
+            var ikm = BuildLabeledIkm(CryptoConstants.LABEL_EAE_PRK, ss, CryptoConstants.SUITE_ID_1);
+            var info = BuildLabeledInfo(CryptoConstants.LABEL_SHARED_SECRET, kemContext, CryptoConstants.SUITE_ID_1, 32);
+            var sharedSecret = ExtractAndExpand(Array.Empty<byte>(), ikm, info, 32);
+
+            // Derive AES key and IV
+            ikm = BuildLabeledIkm(CryptoConstants.LABEL_SECRET, Array.Empty<byte>(), CryptoConstants.SUITE_ID_2);
+            info = CryptoConstants.AES_KEY_INFO;
+            var key = ExtractAndExpand(sharedSecret, ikm, info, 32);
+
+            info = CryptoConstants.IV_INFO;
+            var iv = ExtractAndExpand(sharedSecret, ikm, info, 12);
+
+            // Encrypt using AES-GCM
+            var encryptedData = AesGcmEncrypt(plainTextBuf, key, iv, aad);
+
+            // Concatenate compressed sender public key with ciphertext
+            var compressedSenderBuf = CompressRawPublicKey(senderPubBuf);
+            return Encoding.ConcatUint8Arrays(compressedSenderBuf, encryptedData);
         }
 
         /// <summary>
@@ -423,66 +391,28 @@ namespace Turnkey
 
         private static byte[] AesGcmDecrypt(byte[] encryptedData, byte[] key, byte[] iv, byte[] aad)
         {
-            try
-            {
-                Debug.Log($"AES-GCM Decrypt - Encrypted data length: {encryptedData.Length}");
-                Debug.Log($"AES-GCM Decrypt - Key length: {key.Length}, IV length: {iv.Length}, AAD length: {aad.Length}");
+            var cipher = new GcmBlockCipher(new AesEngine());
+            var parameters = new AeadParameters(new KeyParameter(key), 128, iv, aad);
+            cipher.Init(false, parameters);
 
-                var cipher = new GcmBlockCipher(new AesEngine());
-                var parameters = new AeadParameters(new KeyParameter(key), 128, iv, aad);
-                cipher.Init(false, parameters);
+            var decrypted = new byte[cipher.GetOutputSize(encryptedData.Length)];
+            var len = cipher.ProcessBytes(encryptedData, 0, encryptedData.Length, decrypted, 0);
+            cipher.DoFinal(decrypted, len);
 
-                Debug.Log($"AES-GCM Decrypt - Cipher initialized with tag length: 128 bits");
-
-                var decrypted = new byte[cipher.GetOutputSize(encryptedData.Length)];
-                Debug.Log($"AES-GCM Decrypt - Output buffer size: {decrypted.Length}");
-
-                var len = cipher.ProcessBytes(encryptedData, 0, encryptedData.Length, decrypted, 0);
-                Debug.Log($"AES-GCM Decrypt - Processed {len} bytes");
-
-                try
-                {
-                    cipher.DoFinal(decrypted, len);
-                    Debug.Log("AES-GCM Decrypt - DoFinal completed successfully");
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"AES-GCM Decrypt - DoFinal failed: {ex.Message}");
-                    Debug.LogError($"AES-GCM Decrypt - First few bytes of encrypted data: {BitConverter.ToString(encryptedData, 0, System.Math.Min(16, encryptedData.Length))}");
-                    throw;
-                }
-
-                return decrypted;
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"AES-GCM Decrypt - Exception: {ex.Message}");
-                throw;
-            }
+            return decrypted;
         }
 
         private static byte[] AesGcmEncrypt(byte[] plainData, byte[] key, byte[] iv, byte[] aad)
         {
-            try
-            {
-                Debug.Log($"AES-GCM Encrypt - Plain data length: {plainData.Length}");
-                Debug.Log($"AES-GCM Encrypt - Key length: {key.Length}, IV length: {iv.Length}, AAD length: {aad.Length}");
+            var cipher = new GcmBlockCipher(new AesEngine());
+            var parameters = new AeadParameters(new KeyParameter(key), 128, iv, aad);
+            cipher.Init(true, parameters);
 
-                var cipher = new GcmBlockCipher(new AesEngine());
-                var parameters = new AeadParameters(new KeyParameter(key), 128, iv, aad);
-                cipher.Init(true, parameters);
+            var encrypted = new byte[cipher.GetOutputSize(plainData.Length)];
+            var len = cipher.ProcessBytes(plainData, 0, plainData.Length, encrypted, 0);
+            cipher.DoFinal(encrypted, len);
 
-                var encrypted = new byte[cipher.GetOutputSize(plainData.Length)];
-                var len = cipher.ProcessBytes(plainData, 0, plainData.Length, encrypted, 0);
-                cipher.DoFinal(encrypted, len);
-
-                return encrypted;
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"AES-GCM Encrypt - Error: {ex.Message}");
-                throw;
-            }
+            return encrypted;
         }
 
         /// <summary>
@@ -493,59 +423,42 @@ namespace Turnkey
         /// <returns>Decrypted credential as hex string</returns>
         public static string DecryptCredentialBundle(string encryptedCredentialBundle, string targetPrivateKey)
         {
+            // Decode bundle bytes - try Base58Check first, fall back to plain Base58
+            byte[] bundleBytes;
             try
             {
-                Debug.Log($"Starting decryption of bundle: {encryptedCredentialBundle.Substring(0, System.Math.Min(20, encryptedCredentialBundle.Length))}...");
-
-                // Decode bundle bytes
-                byte[] bundleBytes;
-                try
-                {
-                    Debug.Log("Attempting Base58Check decode...");
-                    bundleBytes = Encoding.Base58CheckDecode(encryptedCredentialBundle);
-                    Debug.Log($"Base58Check decode successful, got {bundleBytes.Length} bytes");
-                }
-                catch (Exception ex)
-                {
-                    // Fall back to plain Base58 for test data
-                    Debug.Log($"Base58Check decode failed: {ex.Message}, falling back to plain Base58");
-                    bundleBytes = Encoding.Base58Decode(encryptedCredentialBundle);
-                    Debug.Log($"Base58 decode successful, got {bundleBytes.Length} bytes");
-                }
-
-                const int COMPRESSED_PUBLIC_KEY_SIZE = 33;
-                if (bundleBytes.Length <= COMPRESSED_PUBLIC_KEY_SIZE)
-                {
-                    throw new Exception($"Bundle size {bundleBytes.Length} is too low. Expecting a compressed public key (33 bytes) and an encrypted credential.");
-                }
-
-                // Standard format: compressed public key + ciphertext
-                var compressedKey = new byte[COMPRESSED_PUBLIC_KEY_SIZE];
-                Array.Copy(bundleBytes, 0, compressedKey, 0, COMPRESSED_PUBLIC_KEY_SIZE);
-
-                var ciphertext = new byte[bundleBytes.Length - COMPRESSED_PUBLIC_KEY_SIZE];
-                Array.Copy(bundleBytes, COMPRESSED_PUBLIC_KEY_SIZE, ciphertext, 0, ciphertext.Length);
-
-                // Uncompress the encapsulated public key
-                var encappedKey = UncompressRawPublicKey(compressedKey);
-
-                // Perform HPKE decryption
-                var decryptedData = HpkeDecrypt(new HpkeDecryptParams
-                {
-                    CiphertextBuf = ciphertext,
-                    EncappedKeyBuf = encappedKey,
-                    ReceiverPriv = targetPrivateKey
-                });
-
-                var result = Encoding.Uint8ArrayToHexString(decryptedData);
-                Debug.Log($"Decryption successful, result length: {result.Length}");
-                return result;
+                bundleBytes = Encoding.Base58CheckDecode(encryptedCredentialBundle);
             }
-            catch (Exception error)
+            catch
             {
-                Debug.LogError($"Error decrypting bundle: {error.Message}");
-                throw new Exception($"Error decrypting bundle: {error.Message}", error);
+                bundleBytes = Encoding.Base58Decode(encryptedCredentialBundle);
             }
+
+            const int COMPRESSED_PUBLIC_KEY_SIZE = 33;
+            if (bundleBytes.Length <= COMPRESSED_PUBLIC_KEY_SIZE)
+            {
+                throw new Exception($"Bundle size {bundleBytes.Length} is too low. Expecting a compressed public key (33 bytes) and an encrypted credential.");
+            }
+
+            // Standard format: compressed public key + ciphertext
+            var compressedKey = new byte[COMPRESSED_PUBLIC_KEY_SIZE];
+            Array.Copy(bundleBytes, 0, compressedKey, 0, COMPRESSED_PUBLIC_KEY_SIZE);
+
+            var ciphertext = new byte[bundleBytes.Length - COMPRESSED_PUBLIC_KEY_SIZE];
+            Array.Copy(bundleBytes, COMPRESSED_PUBLIC_KEY_SIZE, ciphertext, 0, ciphertext.Length);
+
+            // Uncompress the encapsulated public key
+            var encappedKey = UncompressRawPublicKey(compressedKey);
+
+            // Perform HPKE decryption
+            var decryptedData = HpkeDecrypt(new HpkeDecryptParams
+            {
+                CiphertextBuf = ciphertext,
+                EncappedKeyBuf = encappedKey,
+                ReceiverPriv = targetPrivateKey
+            });
+
+            return Encoding.Uint8ArrayToHexString(decryptedData);
         }
 
         /// <summary>
@@ -794,9 +707,8 @@ namespace Turnkey
                 // 5. Verify using P256
                 return VerifyP256Signature(publicKey, signature, msgDigest);
             }
-            catch (Exception ex)
+            catch
             {
-                Debug.LogWarning($"JWT signature verification failed: {ex.Message}");
                 return false;
             }
         }
@@ -847,9 +759,8 @@ namespace Turnkey
 
                 return signer.VerifySignature(derSignature);
             }
-            catch (Exception ex)
+            catch
             {
-                Debug.LogWarning($"P256 signature verification error: {ex.Message}");
                 return false;
             }
         }
