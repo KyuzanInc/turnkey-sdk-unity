@@ -59,7 +59,7 @@ namespace Turnkey
         /// <returns>Public key as byte array</returns>
         public static byte[] GetPublicKey(byte[] privateKey, bool isCompressed = true)
         {
-            var curve = ECNamedCurveTable.GetByName(CryptoConstants.CURVE_NAME);
+            var curve = ECNamedCurveTable.GetByName(UnityConstants.CURVE_NAME);
             var domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
 
             var d = new BigInteger(1, privateKey);
@@ -84,7 +84,7 @@ namespace Turnkey
         /// <returns>Key pair with hex-encoded keys</returns>
         public static KeyPair GenerateP256KeyPair()
         {
-            var curve = ECNamedCurveTable.GetByName(CryptoConstants.CURVE_NAME);
+            var curve = ECNamedCurveTable.GetByName(UnityConstants.CURVE_NAME);
             var domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
 
             var keyGen = new ECKeyPairGenerator();
@@ -248,7 +248,7 @@ namespace Turnkey
         /// </summary>
         public static byte[] CompressRawPublicKey(byte[] rawPublicKey)
         {
-            if (rawPublicKey.Length != CryptoConstants.UNCOMPRESSED_PUBLIC_KEY_SIZE || rawPublicKey[0] != 0x04)
+            if (rawPublicKey.Length != CryptoConstants.UNCOMPRESSED_PUB_KEY_LENGTH_BYTES || rawPublicKey[0] != 0x04)
             {
                 throw new ArgumentException("Invalid uncompressed public key");
             }
@@ -272,7 +272,7 @@ namespace Turnkey
         /// </summary>
         public static byte[] UncompressRawPublicKey(byte[] rawPublicKey)
         {
-            if (rawPublicKey.Length != CryptoConstants.COMPRESSED_PUBLIC_KEY_SIZE)
+            if (rawPublicKey.Length != UnityConstants.COMPRESSED_PUBLIC_KEY_SIZE)
             {
                 throw new ArgumentException($"Invalid compressed public key size: {rawPublicKey.Length}");
             }
@@ -290,9 +290,9 @@ namespace Turnkey
 
             // NIST P-256 curve parameters
             // https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-4.pdf (Appendix D).
-            var p = new BigInteger(CryptoConstants.P256_P);
-            var b = new BigInteger(CryptoConstants.P256_B, 16);
-            var a = p.Subtract(new BigInteger(CryptoConstants.P256_A_OFFSET));
+            var p = new BigInteger(UnityConstants.P256_P);
+            var b = new BigInteger(UnityConstants.P256_B, 16);
+            var a = p.Subtract(new BigInteger(UnityConstants.P256_A_OFFSET));
 
             // Now compute y based on x
             // y^2 = x^3 + ax + b (mod p)
@@ -344,7 +344,7 @@ namespace Turnkey
 
         private static byte[] DeriveSS(byte[] encappedKeyBuf, string priv)
         {
-            var curve = ECNamedCurveTable.GetByName(CryptoConstants.CURVE_NAME);
+            var curve = ECNamedCurveTable.GetByName(UnityConstants.CURVE_NAME);
             var domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
 
             // Create private key
@@ -679,10 +679,7 @@ namespace Turnkey
 
                 if (!string.IsNullOrEmpty(signature) && !string.IsNullOrEmpty(signedData))
                 {
-                    var signerPublicKey = CryptoConstants.TURNKEY_SIGNER_PUBLIC_KEYS.FirstOrDefault(candidate =>
-                        VerifySignature(candidate, signature, signedData));
-
-                    if (signerPublicKey == null)
+                    if (!VerifySignature(CryptoConstants.PRODUCTION_SIGNER_SIGN_PUBLIC_KEY, signature, signedData))
                     {
                         throw new Exception("Invalid signature on export bundle");
                     }
@@ -828,7 +825,7 @@ namespace Turnkey
             try
             {
                 // Get the curve
-                var curve = ECNamedCurveTable.GetByName(CryptoConstants.CURVE_NAME);
+                var curve = ECNamedCurveTable.GetByName(UnityConstants.CURVE_NAME);
                 var domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
 
                 // Decode public key
@@ -860,20 +857,16 @@ namespace Turnkey
         // Helper methods for bundle operations
         private static void VerifyEnclaveSignature(string enclaveQuorumPublic, string signatureHex, string signedDataHex)
         {
-            var matchedKey = CryptoConstants.TURNKEY_SIGNER_PUBLIC_KEYS.FirstOrDefault(key =>
-                string.Equals(enclaveQuorumPublic, key, StringComparison.OrdinalIgnoreCase));
-
-            if (matchedKey == null)
+            if (!string.Equals(enclaveQuorumPublic, CryptoConstants.PRODUCTION_SIGNER_SIGN_PUBLIC_KEY, StringComparison.OrdinalIgnoreCase))
             {
-                var expectedKeys = string.Join(", ", CryptoConstants.TURNKEY_SIGNER_PUBLIC_KEYS);
-                throw new Exception($"Signer key {enclaveQuorumPublic} is not recognized. Expected one of: {expectedKeys}");
+                throw new Exception($"Signer key {enclaveQuorumPublic} is not recognized. Expected: {CryptoConstants.PRODUCTION_SIGNER_SIGN_PUBLIC_KEY}");
             }
 
-            var publicKeyBytes = Encoding.Uint8ArrayFromHexString(matchedKey);
+            var publicKeyBytes = Encoding.Uint8ArrayFromHexString(CryptoConstants.PRODUCTION_SIGNER_SIGN_PUBLIC_KEY);
             var signatureBytes = Encoding.Uint8ArrayFromHexString(signatureHex);
             var messageBytes = Encoding.Uint8ArrayFromHexString(signedDataHex);
 
-            var curve = ECNamedCurveTable.GetByName(CryptoConstants.CURVE_NAME);
+            var curve = ECNamedCurveTable.GetByName(UnityConstants.CURVE_NAME);
             var domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
             var point = curve.Curve.DecodePoint(publicKeyBytes);
             var publicKeyParams = new ECPublicKeyParameters(point, domainParams);
@@ -902,7 +895,7 @@ namespace Turnkey
                     var hash = sha256.ComputeHash(messageBytes);
 
                     // Verify using BouncyCastle
-                    var curve = ECNamedCurveTable.GetByName(CryptoConstants.CURVE_NAME);
+                    var curve = ECNamedCurveTable.GetByName(UnityConstants.CURVE_NAME);
                     var domainParams = new ECDomainParameters(
                         curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
 
@@ -949,18 +942,18 @@ namespace Turnkey
         /// </summary>
         public static string FormatHpkeBuf(byte[] encryptedBuf)
         {
-            if (encryptedBuf.Length <= CryptoConstants.COMPRESSED_PUBLIC_KEY_SIZE)
+            if (encryptedBuf.Length <= UnityConstants.COMPRESSED_PUBLIC_KEY_SIZE)
             {
                 throw new ArgumentException("Encrypted buffer too small");
             }
 
-            var compressedEncappedPublic = new byte[CryptoConstants.COMPRESSED_PUBLIC_KEY_SIZE];
-            Array.Copy(encryptedBuf, 0, compressedEncappedPublic, 0, CryptoConstants.COMPRESSED_PUBLIC_KEY_SIZE);
+            var compressedEncappedPublic = new byte[UnityConstants.COMPRESSED_PUBLIC_KEY_SIZE];
+            Array.Copy(encryptedBuf, 0, compressedEncappedPublic, 0, UnityConstants.COMPRESSED_PUBLIC_KEY_SIZE);
 
             var encappedPublicUncompressed = UncompressRawPublicKey(compressedEncappedPublic);
 
-            var ciphertext = new byte[encryptedBuf.Length - CryptoConstants.COMPRESSED_PUBLIC_KEY_SIZE];
-            Array.Copy(encryptedBuf, CryptoConstants.COMPRESSED_PUBLIC_KEY_SIZE, ciphertext, 0, ciphertext.Length);
+            var ciphertext = new byte[encryptedBuf.Length - UnityConstants.COMPRESSED_PUBLIC_KEY_SIZE];
+            Array.Copy(encryptedBuf, UnityConstants.COMPRESSED_PUBLIC_KEY_SIZE, ciphertext, 0, ciphertext.Length);
 
             var result = new
             {

@@ -16,7 +16,6 @@ namespace Turnkey
     /// </summary>
     public class ApiKeyStamper
     {
-        private const string CURVE_NAME = "secp256r1";
         private const string SIGNATURE_SCHEME = "SIGNATURE_SCHEME_TK_API_P256";
 
         private readonly string apiPublicKey;
@@ -34,7 +33,7 @@ namespace Turnkey
             this.apiPrivateKey = apiPrivateKey;
 
             // Initialize private key parameters
-            var curve = ECNamedCurveTable.GetByName(CURVE_NAME);
+            var curve = ECNamedCurveTable.GetByName(UnityConstants.CURVE_NAME);
             var domainParams = new ECDomainParameters(
                 curve.Curve,
                 curve.G,
@@ -144,7 +143,7 @@ namespace Turnkey
                 var s = signature[1];
 
                 // Ensure low s value (BIP 62) - noble/curves uses lowS: true by default
-                var curve = ECNamedCurveTable.GetByName(CURVE_NAME);
+                var curve = ECNamedCurveTable.GetByName(UnityConstants.CURVE_NAME);
                 var n = curve.N;
                 var halfN = n.ShiftRight(1);
 

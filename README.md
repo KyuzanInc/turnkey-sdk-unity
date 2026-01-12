@@ -2,32 +2,40 @@
 
 Unofficial Unity implementation of Turnkey SDK for cryptographic operations and API client functionality.
 
-## Overview
+## File Structure
 
-This package provides Unity-compatible implementations of Turnkey's core functionality:
-- **@turnkey/http** → `Turnkey.Http`
-- **@turnkey/api-key-stamper** → `Turnkey.ApiKeyStamper`
-- **@turnkey/encoding** → `Turnkey.Encoding`
-- **@turnkey/crypto** → `Turnkey.Crypto`
+| Node.js Package | Version | Node.js Source | Unity File | Description |
+|-----------------|---------|----------------|------------|-------------|
+| @turnkey/crypto | 2.8.9 | `crypto.ts` | `Crypto.cs` | Main cryptographic operations (HPKE, key generation, bundle encryption/decryption) |
+| @turnkey/crypto | 2.8.9 | `math.ts` | `CryptoMath.cs` | Mathematical utilities (modular square root, BigInteger conversions) |
+| @turnkey/crypto | 2.8.9 | `constants.ts` | `CryptoConstants.cs` | HPKE suite IDs, signer public keys |
+| @turnkey/crypto | 2.8.9 | (in crypto.ts) | `Hkdf.cs` | HKDF implementation (uses @noble/hashes/hkdf in Node.js) |
+| @turnkey/http | 3.16.1 | `index.ts` | `Http.cs` | HTTP client with Turnkey stamping |
+| @turnkey/api-key-stamper | 0.6.0 | `index.ts` | `ApiKeyStamper.cs` | ECDSA signature generation for API authentication |
+| @turnkey/encoding | 0.6.0 | `index.ts` | `Encoding.cs` | Hex/Base58/UTF-8 encoding and decoding |
+| @turnkey/encoding | 0.6.0 | (internal) | `EncodingConstants.cs` | BASE58_ALPHABET constant |
+| (Unity-specific) | - | - | `UnityConstants.cs` | BouncyCastle-specific constants (CURVE_NAME, P256 parameters) |
 
-## Version Mapping
+### Internal Dependencies
 
-| Node.js Package | Version | Unity Class |
-|-----------------|---------|-------------|
-| @turnkey/crypto | 2.8.9 | `Turnkey.Crypto`, `Turnkey.CryptoConstants`, `Turnkey.CryptoMath` |
-| @turnkey/http | 3.16.1 | `Turnkey.Http` |
-| @turnkey/api-key-stamper | 0.6.0 | `Turnkey.ApiKeyStamper` |
-| @turnkey/encoding | 0.6.0 | `Turnkey.Encoding` |
+```
+Level 0 (no internal dependencies):
+  - CryptoConstants.cs
+  - CryptoMath.cs
+  - EncodingConstants.cs
+  - UnityConstants.cs
+  - Hkdf.cs
 
-### @turnkey/crypto File Structure
+Level 1:
+  - Encoding.cs → EncodingConstants
 
-The `@turnkey/crypto` package is split into three Unity classes:
+Level 2:
+  - ApiKeyStamper.cs → Encoding, UnityConstants
+  - Crypto.cs → CryptoConstants, CryptoMath, Encoding, UnityConstants, Hkdf
 
-| Node.js Source | Unity Class | Description |
-|----------------|-------------|-------------|
-| `index.ts` | `Crypto.cs` | Main cryptographic operations (HPKE, key generation, bundle encryption/decryption) |
-| `math.js` | `CryptoMath.cs` | Mathematical utilities (modular square root, BigInteger conversions) |
-| (internal constants) | `CryptoConstants.cs` | HPKE suite IDs, curve parameters, signer public keys |
+Level 3:
+  - Http.cs → Crypto, Encoding, ApiKeyStamper
+```
 
 ## Features
 
