@@ -236,7 +236,7 @@ namespace Turnkey
         }
 
         /// <summary>
-        /// Uncompress a compressed public key (aligned with Turnkey v2.3.1)
+        /// Uncompress a compressed public key
         /// </summary>
         public static byte[] UncompressRawPublicKey(byte[] rawPublicKey)
         {
@@ -245,9 +245,14 @@ namespace Turnkey
                 throw new ArgumentException($"Invalid compressed public key size: {rawPublicKey.Length}");
             }
 
-            // point[0] must be 2 (false) or 3 (true).
-            // this maps to the initial "02" or "03" prefix
-            var lsb = rawPublicKey[0] == 3;
+            // Validate prefix byte (must be 0x02 or 0x03)
+            if (rawPublicKey[0] != 0x02 && rawPublicKey[0] != 0x03)
+            {
+                throw new ArgumentException("failed to uncompress raw public key: invalid prefix");
+            }
+
+            // point[0] == 3 indicates odd y-coordinate
+            var lsb = rawPublicKey[0] == 0x03;
 
             // Extract X coordinate (skip the prefix byte) - matching JS: BigInt("0x" + hexString)
             var xBytes = new byte[32];
