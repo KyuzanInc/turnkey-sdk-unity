@@ -3,9 +3,10 @@ using Org.BouncyCastle.Math;
 namespace Turnkey
 {
     /// <summary>
-    /// Mathematical operations for Turnkey crypto, aligned with @turnkey/crypto math.js
+    /// Mathematical operations for Turnkey crypto.
+    /// Ported from @turnkey/crypto math.js.
     /// </summary>
-    public static class TurnkeyMath
+    public static class CryptoMath
     {
         /// <summary>
         /// Compute modular square root using Tonelli-Shanks algorithm

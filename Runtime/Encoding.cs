@@ -59,7 +59,7 @@ namespace Turnkey
             {
                 var remainder = intData.Mod(new BigInteger("58"));
                 intData = intData.Divide(new BigInteger("58"));
-                result.Insert(0, Constants.BASE58_ALPHABET[remainder.IntValue]);
+                result.Insert(0, CryptoConstants.BASE58_ALPHABET[remainder.IntValue]);
             }
 
             // Add leading zeros
@@ -86,7 +86,7 @@ namespace Turnkey
 
             for (int i = encoded.Length - 1; i >= 0; i--)
             {
-                int digit = Constants.BASE58_ALPHABET.IndexOf(encoded[i]);
+                int digit = CryptoConstants.BASE58_ALPHABET.IndexOf(encoded[i]);
                 if (digit < 0)
                 {
                     throw new ArgumentException($"Invalid character '{encoded[i]}' in base58 string");

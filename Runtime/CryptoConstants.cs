@@ -1,9 +1,10 @@
 namespace Turnkey
 {
     /// <summary>
-    /// Constants used by the Turnkey crypto library
+    /// Constants used by the Turnkey crypto library.
+    /// Ported from @turnkey/crypto internal constants.
     /// </summary>
-    public static class Constants
+    public static class CryptoConstants
     {
         // HPKE Suite constants from @turnkey/crypto v2.3.1
         public static readonly byte[] SUITE_ID_1 = new byte[] { 75, 69, 77, 0, 16 }; // KEM suite ID

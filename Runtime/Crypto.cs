@@ -59,7 +59,7 @@ namespace Turnkey
         /// <returns>Public key as byte array</returns>
         public static byte[] GetPublicKey(byte[] privateKey, bool isCompressed = true)
         {
-            var curve = ECNamedCurveTable.GetByName(Constants.CURVE_NAME);
+            var curve = ECNamedCurveTable.GetByName(CryptoConstants.CURVE_NAME);
             var domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
 
             var d = new BigInteger(1, privateKey);
@@ -84,7 +84,7 @@ namespace Turnkey
         /// <returns>Key pair with hex-encoded keys</returns>
         public static KeyPair GenerateP256KeyPair()
         {
-            var curve = ECNamedCurveTable.GetByName(Constants.CURVE_NAME);
+            var curve = ECNamedCurveTable.GetByName(CryptoConstants.CURVE_NAME);
             var domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
 
             var keyGen = new ECKeyPairGenerator();
@@ -147,19 +147,19 @@ namespace Turnkey
                 Debug.Log($"HPKE Decrypt - KEM context length: {kemContext.Length}");
 
                 // Step 3: Build the HKDF inputs for key derivation
-                var ikm = BuildLabeledIkm(Constants.LABEL_EAE_PRK, ss, Constants.SUITE_ID_1);
-                var info = BuildLabeledInfo(Constants.LABEL_SHARED_SECRET, kemContext, Constants.SUITE_ID_1, 32);
+                var ikm = BuildLabeledIkm(CryptoConstants.LABEL_EAE_PRK, ss, CryptoConstants.SUITE_ID_1);
+                var info = BuildLabeledInfo(CryptoConstants.LABEL_SHARED_SECRET, kemContext, CryptoConstants.SUITE_ID_1, 32);
                 var sharedSecret = ExtractAndExpand(new byte[0], ikm, info, 32);
                 Debug.Log($"HPKE Decrypt - Shared secret after HKDF: {Encoding.Uint8ArrayToHexString(sharedSecret)}");
 
                 // Step 4: Derive the AES key
-                ikm = BuildLabeledIkm(Constants.LABEL_SECRET, new byte[0], Constants.SUITE_ID_2);
-                info = Constants.AES_KEY_INFO;
+                ikm = BuildLabeledIkm(CryptoConstants.LABEL_SECRET, new byte[0], CryptoConstants.SUITE_ID_2);
+                info = CryptoConstants.AES_KEY_INFO;
                 var key = ExtractAndExpand(sharedSecret, ikm, info, 32);
                 Debug.Log($"HPKE Decrypt - Derived AES key: {Encoding.Uint8ArrayToHexString(key)}");
 
                 // Step 5: Derive the initialization vector
-                info = Constants.IV_INFO;
+                info = CryptoConstants.IV_INFO;
                 var iv = ExtractAndExpand(sharedSecret, ikm, info, 12);
                 Debug.Log($"HPKE Decrypt - Derived IV: {Encoding.Uint8ArrayToHexString(iv)}");
 
@@ -208,16 +208,16 @@ namespace Turnkey
                 var kemContext = GetKemContext(senderPubBuf, Encoding.Uint8ArrayToHexString(targetKeyBuf));
 
                 // HKDF derive shared secret
-                var ikm = BuildLabeledIkm(Constants.LABEL_EAE_PRK, ss, Constants.SUITE_ID_1);
-                var info = BuildLabeledInfo(Constants.LABEL_SHARED_SECRET, kemContext, Constants.SUITE_ID_1, 32);
+                var ikm = BuildLabeledIkm(CryptoConstants.LABEL_EAE_PRK, ss, CryptoConstants.SUITE_ID_1);
+                var info = BuildLabeledInfo(CryptoConstants.LABEL_SHARED_SECRET, kemContext, CryptoConstants.SUITE_ID_1, 32);
                 var sharedSecret = ExtractAndExpand(Array.Empty<byte>(), ikm, info, 32);
 
                 // Derive AES key and IV
-                ikm = BuildLabeledIkm(Constants.LABEL_SECRET, Array.Empty<byte>(), Constants.SUITE_ID_2);
-                info = Constants.AES_KEY_INFO;
+                ikm = BuildLabeledIkm(CryptoConstants.LABEL_SECRET, Array.Empty<byte>(), CryptoConstants.SUITE_ID_2);
+                info = CryptoConstants.AES_KEY_INFO;
                 var key = ExtractAndExpand(sharedSecret, ikm, info, 32);
 
-                info = Constants.IV_INFO;
+                info = CryptoConstants.IV_INFO;
                 var iv = ExtractAndExpand(sharedSecret, ikm, info, 12);
 
                 // Encrypt using AES-GCM
@@ -248,7 +248,7 @@ namespace Turnkey
         /// </summary>
         public static byte[] CompressRawPublicKey(byte[] rawPublicKey)
         {
-            if (rawPublicKey.Length != Constants.UNCOMPRESSED_PUBLIC_KEY_SIZE || rawPublicKey[0] != 0x04)
+            if (rawPublicKey.Length != CryptoConstants.UNCOMPRESSED_PUBLIC_KEY_SIZE || rawPublicKey[0] != 0x04)
             {
                 throw new ArgumentException("Invalid uncompressed public key");
             }
@@ -272,7 +272,7 @@ namespace Turnkey
         /// </summary>
         public static byte[] UncompressRawPublicKey(byte[] rawPublicKey)
         {
-            if (rawPublicKey.Length != Constants.COMPRESSED_PUBLIC_KEY_SIZE)
+            if (rawPublicKey.Length != CryptoConstants.COMPRESSED_PUBLIC_KEY_SIZE)
             {
                 throw new ArgumentException($"Invalid compressed public key size: {rawPublicKey.Length}");
             }
@@ -290,9 +290,9 @@ namespace Turnkey
 
             // NIST P-256 curve parameters
             // https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-4.pdf (Appendix D).
-            var p = new BigInteger(Constants.P256_P);
-            var b = new BigInteger(Constants.P256_B, 16);
-            var a = p.Subtract(new BigInteger(Constants.P256_A_OFFSET));
+            var p = new BigInteger(CryptoConstants.P256_P);
+            var b = new BigInteger(CryptoConstants.P256_B, 16);
+            var a = p.Subtract(new BigInteger(CryptoConstants.P256_A_OFFSET));
 
             // Now compute y based on x
             // y^2 = x^3 + ax + b (mod p)
@@ -302,7 +302,7 @@ namespace Turnkey
             var rhs = x2PlusA.Multiply(x).Add(b).Mod(p);
 
             // Compute y = sqrt(rhs) mod p
-            var y = TurnkeyMath.ModSqrt(rhs, p);
+            var y = CryptoMath.ModSqrt(rhs, p);
 
             // Adjust y based on the LSB (least significant bit)
             if (lsb != y.TestBit(0))
@@ -344,7 +344,7 @@ namespace Turnkey
 
         private static byte[] DeriveSS(byte[] encappedKeyBuf, string priv)
         {
-            var curve = ECNamedCurveTable.GetByName(Constants.CURVE_NAME);
+            var curve = ECNamedCurveTable.GetByName(CryptoConstants.CURVE_NAME);
             var domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
 
             // Create private key
@@ -382,7 +382,7 @@ namespace Turnkey
         private static byte[] BuildLabeledIkm(byte[] label, byte[] ikm, byte[] suiteId)
         {
             return Encoding.ConcatUint8Arrays(
-                Constants.HPKE_VERSION,
+                CryptoConstants.HPKE_VERSION,
                 suiteId,
                 label,
                 ikm
@@ -399,7 +399,7 @@ namespace Turnkey
             ret[1] = (byte)len;
 
             // Copy HPKE_VERSION starting at index 2
-            Array.Copy(Constants.HPKE_VERSION, 0, ret, 2, Constants.HPKE_VERSION.Length);
+            Array.Copy(CryptoConstants.HPKE_VERSION, 0, ret, 2, CryptoConstants.HPKE_VERSION.Length);
 
             // Copy suite ID
             Array.Copy(suiteId, 0, ret, suiteIdStartIndex, suiteId.Length);
@@ -679,7 +679,7 @@ namespace Turnkey
 
                 if (!string.IsNullOrEmpty(signature) && !string.IsNullOrEmpty(signedData))
                 {
-                    var signerPublicKey = Constants.TURNKEY_SIGNER_PUBLIC_KEYS.FirstOrDefault(candidate =>
+                    var signerPublicKey = CryptoConstants.TURNKEY_SIGNER_PUBLIC_KEYS.FirstOrDefault(candidate =>
                         VerifySignature(candidate, signature, signedData));
 
                     if (signerPublicKey == null)
@@ -792,7 +792,7 @@ namespace Turnkey
                 }
 
                 // 4. Load the notarizer public key
-                var publicKey = Encoding.Uint8ArrayFromHexString(Constants.PRODUCTION_NOTARIZER_SIGN_PUBLIC_KEY);
+                var publicKey = Encoding.Uint8ArrayFromHexString(CryptoConstants.PRODUCTION_NOTARIZER_SIGN_PUBLIC_KEY);
 
                 // 5. Verify using P256
                 return VerifyP256Signature(publicKey, signature, msgDigest);
@@ -828,7 +828,7 @@ namespace Turnkey
             try
             {
                 // Get the curve
-                var curve = ECNamedCurveTable.GetByName(Constants.CURVE_NAME);
+                var curve = ECNamedCurveTable.GetByName(CryptoConstants.CURVE_NAME);
                 var domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
 
                 // Decode public key
@@ -860,12 +860,12 @@ namespace Turnkey
         // Helper methods for bundle operations
         private static void VerifyEnclaveSignature(string enclaveQuorumPublic, string signatureHex, string signedDataHex)
         {
-            var matchedKey = Constants.TURNKEY_SIGNER_PUBLIC_KEYS.FirstOrDefault(key =>
+            var matchedKey = CryptoConstants.TURNKEY_SIGNER_PUBLIC_KEYS.FirstOrDefault(key =>
                 string.Equals(enclaveQuorumPublic, key, StringComparison.OrdinalIgnoreCase));
 
             if (matchedKey == null)
             {
-                var expectedKeys = string.Join(", ", Constants.TURNKEY_SIGNER_PUBLIC_KEYS);
+                var expectedKeys = string.Join(", ", CryptoConstants.TURNKEY_SIGNER_PUBLIC_KEYS);
                 throw new Exception($"Signer key {enclaveQuorumPublic} is not recognized. Expected one of: {expectedKeys}");
             }
 
@@ -873,7 +873,7 @@ namespace Turnkey
             var signatureBytes = Encoding.Uint8ArrayFromHexString(signatureHex);
             var messageBytes = Encoding.Uint8ArrayFromHexString(signedDataHex);
 
-            var curve = ECNamedCurveTable.GetByName(Constants.CURVE_NAME);
+            var curve = ECNamedCurveTable.GetByName(CryptoConstants.CURVE_NAME);
             var domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
             var point = curve.Curve.DecodePoint(publicKeyBytes);
             var publicKeyParams = new ECPublicKeyParameters(point, domainParams);
@@ -902,7 +902,7 @@ namespace Turnkey
                     var hash = sha256.ComputeHash(messageBytes);
 
                     // Verify using BouncyCastle
-                    var curve = ECNamedCurveTable.GetByName(Constants.CURVE_NAME);
+                    var curve = ECNamedCurveTable.GetByName(CryptoConstants.CURVE_NAME);
                     var domainParams = new ECDomainParameters(
                         curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
 
@@ -949,18 +949,18 @@ namespace Turnkey
         /// </summary>
         public static string FormatHpkeBuf(byte[] encryptedBuf)
         {
-            if (encryptedBuf.Length <= Constants.COMPRESSED_PUBLIC_KEY_SIZE)
+            if (encryptedBuf.Length <= CryptoConstants.COMPRESSED_PUBLIC_KEY_SIZE)
             {
                 throw new ArgumentException("Encrypted buffer too small");
             }
 
-            var compressedEncappedPublic = new byte[Constants.COMPRESSED_PUBLIC_KEY_SIZE];
-            Array.Copy(encryptedBuf, 0, compressedEncappedPublic, 0, Constants.COMPRESSED_PUBLIC_KEY_SIZE);
+            var compressedEncappedPublic = new byte[CryptoConstants.COMPRESSED_PUBLIC_KEY_SIZE];
+            Array.Copy(encryptedBuf, 0, compressedEncappedPublic, 0, CryptoConstants.COMPRESSED_PUBLIC_KEY_SIZE);
 
             var encappedPublicUncompressed = UncompressRawPublicKey(compressedEncappedPublic);
 
-            var ciphertext = new byte[encryptedBuf.Length - Constants.COMPRESSED_PUBLIC_KEY_SIZE];
-            Array.Copy(encryptedBuf, Constants.COMPRESSED_PUBLIC_KEY_SIZE, ciphertext, 0, ciphertext.Length);
+            var ciphertext = new byte[encryptedBuf.Length - CryptoConstants.COMPRESSED_PUBLIC_KEY_SIZE];
+            Array.Copy(encryptedBuf, CryptoConstants.COMPRESSED_PUBLIC_KEY_SIZE, ciphertext, 0, ciphertext.Length);
 
             var result = new
             {

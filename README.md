@@ -10,6 +10,25 @@ This package provides Unity-compatible implementations of Turnkey's core functio
 - **@turnkey/encoding** → `Turnkey.Encoding`
 - **@turnkey/crypto** → `Turnkey.Crypto`
 
+## Version Mapping
+
+| Node.js Package | Version | Unity Class |
+|-----------------|---------|-------------|
+| @turnkey/crypto | 2.8.9 | `Turnkey.Crypto`, `Turnkey.CryptoConstants`, `Turnkey.CryptoMath` |
+| @turnkey/http | 3.16.1 | `Turnkey.Http` |
+| @turnkey/api-key-stamper | 0.6.0 | `Turnkey.ApiKeyStamper` |
+| @turnkey/encoding | 0.6.0 | `Turnkey.Encoding` |
+
+### @turnkey/crypto File Structure
+
+The `@turnkey/crypto` package is split into three Unity classes:
+
+| Node.js Source | Unity Class | Description |
+|----------------|-------------|-------------|
+| `index.ts` | `Crypto.cs` | Main cryptographic operations (HPKE, key generation, bundle encryption/decryption) |
+| `math.js` | `CryptoMath.cs` | Mathematical utilities (modular square root, BigInteger conversions) |
+| (internal constants) | `CryptoConstants.cs` | HPKE suite IDs, curve parameters, signer public keys |
+
 ## Features
 
 - **HTTP Client**: API request signing with Turnkey stamping (`Turnkey.Http`)
