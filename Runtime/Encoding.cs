@@ -1,48 +1,77 @@
 using System;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using Org.BouncyCastle.Math;
 
 namespace Turnkey
 {
     /// <summary>
-    /// Encoding utilities for Turnkey crypto, aligned with @turnkey/encoding
+    /// Encoding utilities for Turnkey crypto.
+    /// Ported from @turnkey/encoding v0.6.0.
     /// </summary>
     public static class Encoding
     {
+        #region Nested Classes
+
         /// <summary>
-        /// Convert a byte array to hex string
+        /// Constants used by the Turnkey encoding library.
+        /// Ported from @turnkey/encoding internal constants.
         /// </summary>
-        public static string Uint8ArrayToHexString(byte[] bytes)
+        public static class Constants
         {
-            if (bytes == null) return string.Empty;
-            return BitConverter.ToString(bytes).Replace("-", "").ToLower();
+            /// <summary>
+            /// Base58 alphabet used for encoding/decoding.
+            /// Same as Bitcoin's Base58 alphabet.
+            /// </summary>
+            public const string BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+        }
+
+        #endregion
+
+        private static readonly Regex HexRegex = new Regex("^[0-9A-Fa-f]+$");
+
+        /// <summary>
+        /// Convert a byte array to hex string.
+        /// </summary>
+        public static string Uint8ArrayToHexString(byte[] input)
+        {
+            if (input == null || input.Length == 0) return string.Empty;
+            return BitConverter.ToString(input).Replace("-", "").ToLower();
         }
 
         /// <summary>
-        /// Convert a hex string to byte array
+        /// Convert a hex string to byte array.
         /// </summary>
-        public static byte[] Uint8ArrayFromHexString(string hex)
+        /// <param name="hexString">Hex string (must be valid hex characters only, no 0x prefix)</param>
+        /// <param name="length">Optional target length for leading-zero padding</param>
+        /// <returns>Byte array</returns>
+        public static byte[] Uint8ArrayFromHexString(string hexString, int? length = null)
         {
-            if (string.IsNullOrEmpty(hex)) return new byte[0];
-
-            hex = hex.Replace(" ", "").Replace("-", "");
-            if (hex.StartsWith("0x") || hex.StartsWith("0X"))
+            if (string.IsNullOrEmpty(hexString) || hexString.Length % 2 != 0 || !HexRegex.IsMatch(hexString))
             {
-                hex = hex.Substring(2);
+                throw new ArgumentException($"cannot create uint8array from invalid hex string: \"{hexString}\"");
             }
 
-            if (hex.Length % 2 != 0)
+            byte[] buffer = new byte[hexString.Length / 2];
+            for (int i = 0; i < buffer.Length; i++)
             {
-                throw new ArgumentException("Hex string must have even length");
+                buffer[i] = Convert.ToByte(hexString.Substring(i * 2, 2), 16);
             }
 
-            byte[] bytes = new byte[hex.Length / 2];
-            for (int i = 0; i < bytes.Length; i++)
+            if (!length.HasValue)
             {
-                bytes[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
+                return buffer;
             }
-            return bytes;
+
+            if (hexString.Length / 2 > length.Value)
+            {
+                throw new ArgumentException($"hex value cannot fit in a buffer of {length.Value} byte(s)");
+            }
+
+            byte[] paddedBuffer = new byte[length.Value];
+            Array.Copy(buffer, 0, paddedBuffer, length.Value - buffer.Length, buffer.Length);
+            return paddedBuffer;
         }
 
         /// <summary>
@@ -118,17 +147,6 @@ namespace Turnkey
         }
 
         /// <summary>
-        /// Base58 encode with checksum (Base58Check)
-        /// </summary>
-        public static string Base58CheckEncode(byte[] data)
-        {
-            var hash = System.Security.Cryptography.SHA256.Create();
-            var checksum = hash.ComputeHash(hash.ComputeHash(data)).Take(4).ToArray();
-            var dataWithChecksum = data.Concat(checksum).ToArray();
-            return Base58Encode(dataWithChecksum);
-        }
-
-        /// <summary>
         /// Base58 decode with checksum verification (Base58Check)
         /// </summary>
         public static byte[] Base58CheckDecode(string encoded)
@@ -153,16 +171,11 @@ namespace Turnkey
             return data;
         }
 
-        /// <summary>
-        /// Convert string to UTF-8 bytes
-        /// </summary>
-        public static byte[] StringToUint8Array(string str)
-        {
-            return System.Text.Encoding.UTF8.GetBytes(str);
-        }
+        // Unity-specific helpers (not in official @turnkey/encoding)
 
         /// <summary>
-        /// Convert UTF-8 bytes to string
+        /// Convert UTF-8 bytes to string.
+        /// Unity-specific helper (equivalent to TextDecoder in JS).
         /// </summary>
         public static string Uint8ArrayToString(byte[] bytes)
         {
@@ -170,7 +183,8 @@ namespace Turnkey
         }
 
         /// <summary>
-        /// Concatenate multiple byte arrays
+        /// Concatenate multiple byte arrays.
+        /// Unity-specific helper.
         /// </summary>
         public static byte[] ConcatUint8Arrays(params byte[][] arrays)
         {

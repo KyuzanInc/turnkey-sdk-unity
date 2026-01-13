@@ -12,11 +12,13 @@ using UnityEngine;
 namespace Turnkey
 {
     /// <summary>
-    /// Signs API requests with Turnkey API keys
+    /// Signs API requests with Turnkey API keys.
+    /// Ported from @turnkey/api-key-stamper v0.6.0.
+    /// Note: Only DER signature format is supported. Raw format is not implemented.
     /// </summary>
     public class ApiKeyStamper
     {
-        private const string CURVE_NAME = "secp256r1";
+        private const string STAMP_HEADER_NAME = "X-Stamp";
         private const string SIGNATURE_SCHEME = "SIGNATURE_SCHEME_TK_API_P256";
 
         private readonly string apiPublicKey;
@@ -34,7 +36,7 @@ namespace Turnkey
             this.apiPrivateKey = apiPrivateKey;
 
             // Initialize private key parameters
-            var curve = ECNamedCurveTable.GetByName(CURVE_NAME);
+            var curve = ECNamedCurveTable.GetByName(UnityConstants.CURVE_NAME);
             var domainParams = new ECDomainParameters(
                 curve.Curve,
                 curve.G,
@@ -71,10 +73,19 @@ namespace Turnkey
         }
 
         /// <summary>
-        /// Stamp structure for API requests
+        /// Result of stamping a payload
+        /// </summary>
+        public class StampResult
+        {
+            public string stampHeaderName;
+            public string stampHeaderValue;
+        }
+
+        /// <summary>
+        /// Stamp structure for API requests (internal)
         /// </summary>
         [System.Serializable]
-        public class TurnkeyStamp
+        private class TurnkeyStamp
         {
             public string publicKey;
             public string scheme;
@@ -85,33 +96,28 @@ namespace Turnkey
         /// Create a signature stamp for the given payload
         /// </summary>
         /// <param name="payload">Payload to sign</param>
-        /// <returns>Base64URL-encoded stamp</returns>
-        public string Stamp(string payload)
+        /// <returns>Stamp result with header name and value</returns>
+        public StampResult Stamp(string payload)
         {
-            try
+            // Sign the payload
+            var signature = SignPayload(payload);
+
+            // Create stamp object
+            var stamp = new TurnkeyStamp
             {
-                // Sign the payload
-                var signature = SignPayload(payload);
+                publicKey = apiPublicKey,
+                scheme = SIGNATURE_SCHEME,
+                signature = signature
+            };
 
-                // Create stamp object
-                var stamp = new TurnkeyStamp
-                {
-                    publicKey = apiPublicKey,
-                    scheme = SIGNATURE_SCHEME,
-                    signature = signature
-                };
+            // Convert to JSON and encode as base64url
+            var stampJson = JsonUtility.ToJson(stamp);
 
-                // Convert to JSON
-                var stampJson = JsonUtility.ToJson(stamp);
-
-                // Encode as base64url
-                return Base64UrlEncode(stampJson);
-            }
-            catch (Exception e)
+            return new StampResult
             {
-                Debug.LogError($"[ApiKeyStamper] Failed to stamp payload: {e.Message}");
-                throw;
-            }
+                stampHeaderName = STAMP_HEADER_NAME,
+                stampHeaderValue = Base64UrlEncode(stampJson)
+            };
         }
 
         /// <summary>
@@ -119,83 +125,82 @@ namespace Turnkey
         /// </summary>
         public string SignPayload(string payload)
         {
-            try
+            // Verify that the derived public key matches the provided public key
+            var derivedPublicKeyBytes = Crypto.GetPublicKey(apiPrivateKey, true);
+            var derivedPublicKey = Encoding.Uint8ArrayToHexString(derivedPublicKeyBytes);
+            if (!string.Equals(derivedPublicKey, apiPublicKey, StringComparison.OrdinalIgnoreCase))
             {
-                // Convert payload to bytes
-                var payloadBytes = System.Text.Encoding.UTF8.GetBytes(payload);
-
-                // Create signer using HMacDsaKCalculator for deterministic signatures (RFC 6979)
-                // Try different approaches to match noble/curves implementation
-                var hmacCalculator = new HMacDsaKCalculator(DigestUtilities.GetDigest("SHA-256"));
-                var signer = new ECDsaSigner(hmacCalculator);
-                signer.Init(true, privateKeyParams);
-
-                // Hash the payload using SHA256
-                var digest = DigestUtilities.GetDigest("SHA-256");
-                digest.BlockUpdate(payloadBytes, 0, payloadBytes.Length);
-                var hash = new byte[digest.GetDigestSize()];
-                digest.DoFinal(hash, 0);
-
-                // Sign the hash
-                var signature = signer.GenerateSignature(hash);
-
-                // Get r and s values
-                var r = signature[0];
-                var s = signature[1];
-
-                // Ensure low s value (BIP 62) - noble/curves uses lowS: true by default
-                var curve = ECNamedCurveTable.GetByName(CURVE_NAME);
-                var n = curve.N;
-                var halfN = n.ShiftRight(1);
-
-                if (s.CompareTo(halfN) > 0)
-                {
-                    s = n.Subtract(s);
-                }
-
-                // Convert to byte arrays
-                var rBytes = r.ToByteArrayUnsigned();
-                var sBytes = s.ToByteArrayUnsigned();
-
-                // DER encoding: SEQUENCE { INTEGER r, INTEGER s }
-                using (var ms = new System.IO.MemoryStream())
-                {
-                    // Write SEQUENCE tag
-                    ms.WriteByte(0x30);
-
-                    // Calculate lengths
-                    int rLength = rBytes.Length;
-                    int sLength = sBytes.Length;
-
-                    // Add padding byte if high bit is set (to maintain positive sign)
-                    bool rNeedsPadding = rBytes.Length > 0 && (rBytes[0] & 0x80) != 0;
-                    bool sNeedsPadding = sBytes.Length > 0 && (sBytes[0] & 0x80) != 0;
-
-                    if (rNeedsPadding) rLength++;
-                    if (sNeedsPadding) sLength++;
-
-                    int totalLength = 2 + rLength + 2 + sLength; // 2 bytes for each INTEGER header
-                    ms.WriteByte((byte)totalLength);
-
-                    // Write R as INTEGER
-                    ms.WriteByte(0x02); // INTEGER tag
-                    ms.WriteByte((byte)rLength);
-                    if (rNeedsPadding) ms.WriteByte(0x00);
-                    ms.Write(rBytes, 0, rBytes.Length);
-
-                    // Write S as INTEGER
-                    ms.WriteByte(0x02); // INTEGER tag
-                    ms.WriteByte((byte)sLength);
-                    if (sNeedsPadding) ms.WriteByte(0x00);
-                    ms.Write(sBytes, 0, sBytes.Length);
-
-                    return Encoding.Uint8ArrayToHexString(ms.ToArray());
-                }
+                throw new ArgumentException("Provided public key doesn't match the private key");
             }
-            catch (Exception e)
+
+            // Convert payload to bytes
+            var payloadBytes = System.Text.Encoding.UTF8.GetBytes(payload);
+
+            // Create signer using HMacDsaKCalculator for deterministic signatures (RFC 6979)
+            var hmacCalculator = new HMacDsaKCalculator(DigestUtilities.GetDigest("SHA-256"));
+            var signer = new ECDsaSigner(hmacCalculator);
+            signer.Init(true, privateKeyParams);
+
+            // Hash the payload using SHA256
+            var digest = DigestUtilities.GetDigest("SHA-256");
+            digest.BlockUpdate(payloadBytes, 0, payloadBytes.Length);
+            var hash = new byte[digest.GetDigestSize()];
+            digest.DoFinal(hash, 0);
+
+            // Sign the hash
+            var signature = signer.GenerateSignature(hash);
+
+            // Get r and s values
+            var r = signature[0];
+            var s = signature[1];
+
+            // Ensure low s value (BIP 62) - noble/curves uses lowS: true by default
+            var curve = ECNamedCurveTable.GetByName(UnityConstants.CURVE_NAME);
+            var n = curve.N;
+            var halfN = n.ShiftRight(1);
+
+            if (s.CompareTo(halfN) > 0)
             {
-                Debug.LogError($"[ApiKeyStamper] Failed to sign payload: {e.Message}");
-                throw;
+                s = n.Subtract(s);
+            }
+
+            // Convert to byte arrays
+            var rBytes = r.ToByteArrayUnsigned();
+            var sBytes = s.ToByteArrayUnsigned();
+
+            // DER encoding: SEQUENCE { INTEGER r, INTEGER s }
+            using (var ms = new System.IO.MemoryStream())
+            {
+                // Write SEQUENCE tag
+                ms.WriteByte(0x30);
+
+                // Calculate lengths
+                int rLength = rBytes.Length;
+                int sLength = sBytes.Length;
+
+                // Add padding byte if high bit is set (to maintain positive sign)
+                bool rNeedsPadding = rBytes.Length > 0 && (rBytes[0] & 0x80) != 0;
+                bool sNeedsPadding = sBytes.Length > 0 && (sBytes[0] & 0x80) != 0;
+
+                if (rNeedsPadding) rLength++;
+                if (sNeedsPadding) sLength++;
+
+                int totalLength = 2 + rLength + 2 + sLength; // 2 bytes for each INTEGER header
+                ms.WriteByte((byte)totalLength);
+
+                // Write R as INTEGER
+                ms.WriteByte(0x02); // INTEGER tag
+                ms.WriteByte((byte)rLength);
+                if (rNeedsPadding) ms.WriteByte(0x00);
+                ms.Write(rBytes, 0, rBytes.Length);
+
+                // Write S as INTEGER
+                ms.WriteByte(0x02); // INTEGER tag
+                ms.WriteByte((byte)sLength);
+                if (sNeedsPadding) ms.WriteByte(0x00);
+                ms.Write(sBytes, 0, sBytes.Length);
+
+                return Encoding.Uint8ArrayToHexString(ms.ToArray());
             }
         }
 
