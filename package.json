@@ -22,5 +22,8 @@
     "name": "Kyuzan Inc.",
     "url": "https://kyuzan.com"
   },
+  "testables": [
+    "com.kyuzan.turnkey-sdk-unity"
+  ],
   "hideInEditor": false
 }
