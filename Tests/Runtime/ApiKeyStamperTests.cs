@@ -9,11 +9,6 @@ namespace Turnkey.Tests
     /// <summary>
     /// Unit tests for <see cref="Turnkey.ApiKeyStamper"/>.
     /// </summary>
-    /// <remarks>
-    /// Relocated from peak-sdk-unity's <c>TurnkeyTests.cs</c> (Region 2) so the tests live
-    /// alongside the implementation they cover. Uses <c>Turnkey.Crypto.GenerateP256KeyPair()</c>
-    /// directly to avoid any back-reference to peak-sdk-unity.
-    /// </remarks>
     public class ApiKeyStamperTests
     {
         [UnityTest]
