@@ -67,9 +67,13 @@ This package is designed to be used as a local dependency within the Peak monore
 }
 ```
 
-### Future: As Git dependency
+### As a Git dependency
 
-When moved to a separate repository:
+This package lives at
+[`KyuzanInc/turnkey-sdk-unity`](https://github.com/KyuzanInc/turnkey-sdk-unity).
+In the Peak monorepo it is consumed through a git submodule, but it
+can also be pulled directly as a UPM Git dependency:
+
 ```json
 {
   "dependencies": {
@@ -148,7 +152,9 @@ The main entry point is `Turnkey.Crypto` class, which provides all cryptographic
 
 ## License
 
-MIT License.
+Released under the MIT License. A standalone `LICENSE` file is not
+distributed at the package root; the BouncyCastle plugin retains its
+own license at `Plugins/BouncyCastle/LICENSE.md`.
 
 ## Status
 
