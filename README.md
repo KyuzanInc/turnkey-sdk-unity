@@ -55,29 +55,33 @@ Level 3:
 
 ## Installation
 
-### As local dependency (recommended)
-
-This package is designed to be used as a local dependency within the Peak monorepo:
-
-```json
-{
-  "dependencies": {
-    "com.kyuzan.turnkey-sdk-unity": "file:../turnkey-sdk-unity"
-  }
-}
-```
-
-### As a Git dependency
-
-This package lives at
-[`KyuzanInc/turnkey-sdk-unity`](https://github.com/KyuzanInc/turnkey-sdk-unity).
-In the Peak monorepo it is consumed through a git submodule, but it
-can also be pulled directly as a UPM Git dependency:
+Add the package to your Unity project's `Packages/manifest.json` as a
+UPM Git dependency, pinning a tag for stability:
 
 ```json
 {
   "dependencies": {
     "com.kyuzan.turnkey-sdk-unity": "https://github.com/KyuzanInc/turnkey-sdk-unity.git#v0.1.0"
+  }
+}
+```
+
+Or via the Unity Package Manager UI:
+
+1. Open **Window ▸ Package Manager**.
+2. Click **+ ▸ Add package from git URL...**
+3. Enter `https://github.com/KyuzanInc/turnkey-sdk-unity.git`.
+
+### Local file path (contributors only)
+
+When contributing to this package from a checkout that already has it
+on disk, you can point Unity at the local copy with a `file:` URL
+instead of pulling from Git:
+
+```json
+{
+  "dependencies": {
+    "com.kyuzan.turnkey-sdk-unity": "file:../turnkey-sdk-unity"
   }
 }
 ```
@@ -133,11 +137,11 @@ var bytes = Encoding.Uint8ArrayFromHexString(hex);
 
 ## Usage Context
 
-This package is primarily used by:
-- **@packages/peak-sdk-unity/** - Peak's embedded wallet SDK for Unity
-- **@examples/peak-sdk-unity-example/** - Unity example project demonstrating usage
-
-It is designed as a low-level cryptographic library that provides Turnkey-compatible operations for Unity projects.
+This package is a low-level cryptographic and signed-request library
+that provides Turnkey-compatible operations for Unity projects.
+Higher-level wallet SDKs (e.g.
+[`peak-sdk-unity`](https://github.com/KyuzanInc/peak-sdk-unity)) can
+build on top of it.
 
 ## Architecture
 
