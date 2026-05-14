@@ -4,34 +4,42 @@ Unofficial Unity implementation of Turnkey SDK for cryptographic operations and 
 
 ## File Structure
 
+This package was ported from the upstream Turnkey TypeScript SDKs at
+fixed versions. The C# layout consolidates several TS source files
+into fewer `.cs` files using nested `static` classes; the table below
+records the original TS provenance for each piece of functionality.
+
 | Node.js Package | Version | Node.js Source | Unity File | Description |
 |-----------------|---------|----------------|------------|-------------|
 | @turnkey/crypto | 2.8.9 | `crypto.ts` | `Crypto.cs` | Main cryptographic operations (HPKE, key generation, bundle encryption/decryption) |
-| @turnkey/crypto | 2.8.9 | `math.ts` | `CryptoMath.cs` | Mathematical utilities (modular square root) |
-| @turnkey/crypto | 2.8.9 | `constants.ts` | `CryptoConstants.cs` | HPKE suite IDs, signer public keys |
-| @turnkey/crypto | 2.8.9 | (in crypto.ts) | `CryptoHkdf.cs` | HKDF implementation (uses @noble/hashes/hkdf in Node.js) |
-| @turnkey/http | 3.16.1 | `index.ts` | `Http.cs` | HTTP client with Turnkey stamping |
+| @turnkey/crypto | 2.8.9 | `math.ts` | `Crypto.cs` (nested `Crypto.Math`) | Mathematical utilities (modular square root) |
+| @turnkey/crypto | 2.8.9 | `constants.ts` | `Crypto.cs` (nested `Crypto.Constants`) | HPKE suite IDs, signer public keys |
+| @turnkey/crypto | 2.8.9 | (HKDF impl in `crypto.ts`; uses `@noble/hashes/hkdf` in Node.js) | `Crypto.cs` (nested `Crypto.Hkdf`) | HKDF Extract / Expand |
+| @turnkey/http | 3.16.1 | `index.ts` | `Http.cs` | Signed Turnkey request builder (API key stamping; partial port — no error handling / polling / WebAuthn) |
 | @turnkey/api-key-stamper | 0.6.0 | `index.ts` | `ApiKeyStamper.cs` | ECDSA signature generation for API authentication |
-| @turnkey/encoding | 0.6.0 | `index.ts` | `Encoding.cs` | Hex/Base58/UTF-8 encoding and decoding |
-| @turnkey/encoding | 0.6.0 | (internal) | `EncodingConstants.cs` | BASE58_ALPHABET constant |
+| @turnkey/encoding | 0.6.0 | `hex.ts` | `Encoding.cs` (`Uint8ArrayToHexString`, `Uint8ArrayFromHexString`) | Hex encoding / decoding |
+| @turnkey/encoding | 0.6.0 | `bs58.ts`, `bs58check.ts` | `Encoding.cs` (`Base58Encode`, `Base58Decode`, `Base58CheckDecode`) | Base58 / Base58Check |
+| @turnkey/encoding | 0.6.0 | (internal `BASE58_ALPHABET` in `bs58.ts`) | `Encoding.cs` (nested `Encoding.Constants`) | BASE58_ALPHABET constant |
 | (Unity-specific) | - | - | `UnityConstants.cs` | BouncyCastle-specific constants (CURVE_NAME, P256 parameters) |
+
+The upstream `@turnkey/encoding/base64.ts` is **not** ported: C# uses
+`System.Convert.ToBase64String` / `FromBase64String` directly. Other
+unported pieces are noted in the corresponding `.cs` file headers
+(for example `hpkeAuthEncrypt`, `quorumKeyEncrypt`, and DER signature
+helpers in `Crypto.cs`).
 
 ### Internal Dependencies
 
 ```
 Level 0 (no internal dependencies):
-  - CryptoConstants.cs
-  - CryptoMath.cs
-  - EncodingConstants.cs
   - UnityConstants.cs
-  - CryptoHkdf.cs
 
 Level 1:
-  - Encoding.cs → EncodingConstants
+  - Encoding.cs (uses its own nested Constants)
 
 Level 2:
   - ApiKeyStamper.cs → Encoding, UnityConstants
-  - Crypto.cs → CryptoConstants, CryptoMath, Encoding, UnityConstants, Hkdf
+  - Crypto.cs       → Encoding, UnityConstants (Math, Hkdf, Constants nested)
 
 Level 3:
   - Http.cs → Crypto, Encoding, ApiKeyStamper
@@ -39,13 +47,11 @@ Level 3:
 
 ## Features
 
-- **HTTP Client**: API request signing with Turnkey stamping (`Turnkey.Http`)
-- **API Key Stamper**: ECDSA signature generation for API authentication (`Turnkey.ApiKeyStamper`)
-- **Cryptography**: P256 key pair generation and HPKE encryption/decryption (`Turnkey.Crypto`)
-- **Private Key Operations**: Bundle encryption/decryption (`EncryptPrivateKeyToBundle`, `DecryptExportBundle`)
-- **Credential Handling**: Encrypted credential bundle decryption
-- **Encoding Utilities**: Base58/Base64/Hex encoding and decoding (`Turnkey.Encoding`)
-- **Signature Verification**: ECDSA signature verification for bundle integrity
+- **Signed request builder** (`Turnkey.Http`): build Turnkey API requests with API key stamping. Higher-level features such as response polling, WebAuthn, and error retries are out of scope.
+- **API Key Stamper** (`Turnkey.ApiKeyStamper`): ECDSA signature generation for API authentication.
+- **Cryptography** (`Turnkey.Crypto`): P-256 key pair generation, HPKE encryption / decryption, bundle encryption / decryption (`EncryptPrivateKeyToBundle`, `DecryptExportBundle`), and encrypted credential bundle decryption.
+- **Encoding utilities** (`Turnkey.Encoding`): Hex / Base58 / UTF-8 conversions.
+- **Signature verification**: ECDSA signature verification for bundle integrity.
 
 ## Installation
 
@@ -142,7 +148,7 @@ The main entry point is `Turnkey.Crypto` class, which provides all cryptographic
 
 ## License
 
-MIT License - See LICENSE file for details
+MIT License.
 
 ## Status
 
